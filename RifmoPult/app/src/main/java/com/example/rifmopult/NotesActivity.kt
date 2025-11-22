@@ -1,42 +1,48 @@
 package com.example.rifmopult
 
+import android.app.Activity
+import android.content.Intent
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
-import android.view.LayoutInflater
-import android.view.View
-import android.view.ViewGroup
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.GridLayoutManager
-import androidx.recyclerview.widget.RecyclerView
+import androidx.lifecycle.lifecycleScope
 import com.example.rifmopult.databinding.ActivityNotesBinding
-import com.example.rifmopult.databinding.ItemNoteBinding
+import kotlinx.coroutines.launch
 
 class NotesActivity : AppCompatActivity() {
 
-    // Привязка для доступа к элементам интерфейса
     private lateinit var binding: ActivityNotesBinding
-    // Адаптер для отображения списка заметок
     private lateinit var notesAdapter: NotesAdapter
-    // Полный список всех заметок
     private val allNotes = mutableListOf<Note>()
-    // Список заметок после фильтрации (то что показывается пользователю)
     private val filteredNotes = mutableListOf<Note>()
 
-    // Основной метод создания активности
+    private lateinit var db: AppDatabase
+    private lateinit var noteDao: NoteDao
+
+    private val noteEditLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        handleNoteEditResult(result)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Инициализация привязки и установка макета
         binding = ActivityNotesBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        db = AppDatabase.getDatabase(this)
+        noteDao = db.noteDao()
 
         setupRecyclerView()
         setupClickListeners()
         setupSearch()
-        loadSampleNotes()
+
+        loadNotesFromDatabase()
     }
 
-    // Настройка RecyclerView для отображения заметок в виде сетки
     private fun setupRecyclerView() {
         val gridLayoutManager = GridLayoutManager(this, 2)
         binding.notesRecyclerView.layoutManager = gridLayoutManager
@@ -47,33 +53,24 @@ class NotesActivity : AppCompatActivity() {
         binding.notesRecyclerView.adapter = notesAdapter
     }
 
-    // Настройка обработчиков нажатий на кнопки
     private fun setupClickListeners() {
         binding.fabAddNote.setOnClickListener {
             createNewNote()
         }
     }
 
-    // Настройка поиска по заметкам
     private fun setupSearch() {
         binding.searchEditText.addTextChangedListener(object : TextWatcher {
-            // ДО изменения текста
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-
-            // ВО ВРЕМЯ изменения текста
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                 filterNotes(s.toString())
             }
-
-            // ПОСЛЕ изменения текста
             override fun afterTextChanged(s: Editable?) {}
         })
     }
 
-    // Фильтрация заметок по поисковому запросу
     private fun filterNotes(query: String) {
         filteredNotes.clear()
-
         if (query.isEmpty()) {
             filteredNotes.addAll(allNotes)
         } else {
@@ -88,95 +85,56 @@ class NotesActivity : AppCompatActivity() {
         notesAdapter.notifyDataSetChanged()
     }
 
-    // для демонстрации
-    private fun loadSampleNotes() {
-        allNotes.addAll(listOf(
-            Note(1, "Все проходит", "Все проходит в этом мире\n" +
-                    "Снег сменяется дождем\n" +
-                    "Все проходит, все проходит,\n" +
-                    "Мы пришли и мы уйдем!", "12.01.2024"),
-            Note(2, "Па па пам", "Прошлые сутки ты провела с другим человеком\n" +
-                "И за эти короткие сутки я стал колекой\n" +
-                "Я стал корявым деревом с обозженной корой\n" +
-                "А ты сушишь свои волосы перед встречей со мной", "11.01.2024"),
-            Note(3, "", "Мне нравится, что вы больны не мной\n" +
-                "Мне нравится, что я больна не вами", "10.01.2024"),
-        ))
-        filteredNotes.addAll(allNotes)
-        notesAdapter.notifyDataSetChanged()
-    }
+    private var isFirstLoad = true
 
-    private fun createNewNote() {
-        val newNote = Note(
-            id = System.currentTimeMillis(),
-            title = "",
-            content = "Новая заметка...",
-            date = "Сегодня"
-        )
-        allNotes.add(0, newNote)
-        filterNotes(binding.searchEditText.text.toString())
-        openNoteDetail(newNote)
-    }
+    private fun loadNotesFromDatabase() {
+        lifecycleScope.launch {
+            val notesFromDb = noteDao.getAllNotes()
+            allNotes.clear()
+            allNotes.addAll(notesFromDb.map { it.toNote() })
+            filteredNotes.clear()
+            filteredNotes.addAll(allNotes)
+            notesAdapter.notifyDataSetChanged()
 
-    // Открытие деталей заметки
-    private fun openNoteDetail(note: Note) {
-        // Для демонстрации. ДОПИСАТЬ
-        android.widget.Toast.makeText(
-            this,
-            "Открыта заметка: ${if (note.title.isEmpty()) "Без названия" else note.title}",
-            android.widget.Toast.LENGTH_SHORT
-        ).show()
-    }
-}
-
-// Заметка
-data class Note(
-    val id: Long,
-    val title: String,
-    val content: String,
-    val date: String
-)
-
-// для отображения списка заметок в RecyclerView
-class NotesAdapter(
-    private val notes: List<Note>,
-    private val onItemClick: (Note) -> Unit
-) : RecyclerView.Adapter<NotesAdapter.NoteViewHolder>() {
-
-    // Класс для хранения представления одного элемента списка
-    class NoteViewHolder(private val binding: ItemNoteBinding) : RecyclerView.ViewHolder(binding.root) {
-
-        // Связывание данных заметки с элементами интерфейса
-        fun bind(note: Note, onItemClick: (Note) -> Unit) {
-            // Обработка отображения заголовка
-            if (note.title.isNotEmpty()) {
-                binding.noteTitleTextView.visibility = View.VISIBLE
-                binding.emptyTitleTextView.visibility = View.GONE
-                binding.noteTitleTextView.text = note.title
-            } else {
-                binding.noteTitleTextView.visibility = View.GONE
-            }
-
-            binding.noteContentTextView.text = note.content
-
-            itemView.setOnClickListener {
-                onItemClick(note)
+            if (isFirstLoad && allNotes.isEmpty()) {
+                isFirstLoad = false
+                createNewNote()
             }
         }
     }
 
-    // Создание нового ViewHolder
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): NoteViewHolder {
-        // Создаем привязку для элемента списка
-        val binding = ItemNoteBinding.inflate(LayoutInflater.from(parent.context), parent, false)
-        return NoteViewHolder(binding)
+    private fun createNewNote() {
+        val intent = Intent(this, NoteEditActivity::class.java)
+        noteEditLauncher.launch(intent)
     }
 
-    // Связывание данных с существующим ViewHolder
-    override fun onBindViewHolder(holder: NoteViewHolder, position: Int) {
-        holder.bind(notes[position], onItemClick)
+    private fun openNoteDetail(note: Note) {
+        val intent = Intent(this, NoteEditActivity::class.java).apply {
+            putExtra(NoteEditActivity.EXTRA_NOTE, note)
+        }
+        noteEditLauncher.launch(intent)
     }
 
-    // Возвращает количество элементов в списке
-    override fun getItemCount() = notes.size
+    private fun handleNoteEditResult(result: androidx.activity.result.ActivityResult) {
+        when (result.resultCode) {
+            Activity.RESULT_OK -> {
+                val updatedNote = result.data?.getSerializableExtra(NoteEditActivity.EXTRA_NOTE_RESULT) as? Note
+                updatedNote?.let { note ->
+                    lifecycleScope.launch {
+                        noteDao.insertNote(note.toEntity())
+                        loadNotesFromDatabase()
+                    }
+                }
+            }
+            NoteEditActivity.RESULT_DELETED -> {
+                val deletedNote = result.data?.getSerializableExtra(NoteEditActivity.EXTRA_NOTE_RESULT) as? Note
+                deletedNote?.let { note ->
+                    lifecycleScope.launch {
+                        noteDao.deleteNote(note.toEntity())
+                        loadNotesFromDatabase()
+                    }
+                }
+            }
+        }
+    }
 }

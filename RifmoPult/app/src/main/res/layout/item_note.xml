@@ -14,9 +14,7 @@
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:padding="16dp"
-        android:background="?attr/selectableItemBackground"
-        android:clickable="true"
-        android:focusable="true">
+        android:background="?attr/selectableItemBackground">
 
         <!-- Название заметки -->
         <TextView
@@ -55,6 +53,12 @@
             android:ellipsize="end"
             android:visibility="gone" />
 
+        <TextView
+            android:id="@+id/noteDateTextView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="12sp"
+            android:textColor="#999999" />
     </LinearLayout>
 
 </androidx.cardview.widget.CardView>
