@@ -350,10 +350,16 @@ class NoteEditActivity : AppCompatActivity() {
         val title = popupView.findViewById<TextView>(R.id.rhymeTitle)
         title.text = "Рифма к слову: $word"
 
-        val container = popupView.findViewById<LinearLayout>(R.id.rhymeWordsContainer)
+        val container = popupView.findViewById<com.google.android.flexbox.FlexboxLayout>(R.id.rhymeWordsContainer)
         val closeBtn = popupView.findViewById<ImageButton>(R.id.btnCloseRhyme)
 
         val fakeRhymes = listOf("друг", "вокруг", "много", "пирог", "порог", "шар", "жар", "багаж",
+            "запах", "смех", "штуки", "туки", "каучуки", "бамбуки", "поруки", "хуки",  "физруки",
+            "ультразвуки", "уки", "друг", "вокруг", "много", "пирог", "порог", "шар", "жар", "багаж",
+            "запах", "смех", "штуки", "туки", "каучуки", "бамбуки", "поруки", "хуки",  "физруки",
+            "ультразвуки", "уки", "друг", "вокруг", "много", "пирог", "порог", "шар", "жар", "багаж",
+            "запах", "смех", "штуки", "туки", "каучуки", "бамбуки", "поруки", "хуки",  "физруки",
+            "ультразвуки", "уки", "друг", "вокруг", "много", "пирог", "порог", "шар", "жар", "багаж",
             "запах", "смех", "штуки", "туки", "каучуки", "бамбуки", "поруки", "хуки",  "физруки",
             "ультразвуки", "уки")
 
@@ -362,25 +368,12 @@ class NoteEditActivity : AppCompatActivity() {
                 text = rhyme
                 setPadding(16, 8, 16, 8)
                 setBackgroundResource(R.drawable.rhyme_word_background)
-                setOnTouchListener { v, event ->
-                    if (event.action == MotionEvent.ACTION_DOWN) {
-                        val shadowBuilder = View.DragShadowBuilder(v)
-                        v.startDragAndDrop(
-                            ClipData.newPlainText("rhyme_word", rhyme),
-                            shadowBuilder,
-                            rhyme,
-                            0
-                        )
-                        return@setOnTouchListener true
-                    }
-                    false
-                }
             }
             textView.layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply {
-                setMargins(0, 0, 8, 8)
+                setMargins(8, 0, 16, 8)
             }
             container.addView(textView)
         }
