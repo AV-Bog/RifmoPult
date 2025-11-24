@@ -2,6 +2,7 @@ package com.example.rifmopult
 
 import android.annotation.SuppressLint
 import android.content.ClipData
+import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
@@ -26,6 +27,8 @@ import java.text.SimpleDateFormat
 import android.widget.*
 import java.util.*
 import androidx.core.graphics.drawable.toDrawable
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 
 class NoteEditActivity : AppCompatActivity() {
 
@@ -50,10 +53,15 @@ class NoteEditActivity : AppCompatActivity() {
 
     data class NoteState(val title: String, val content: String)
 
+    private lateinit var noteDao: NoteDao
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityNoteEditBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        val db = AppDatabase.getDatabase(this)
+        noteDao = db.noteDao()
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -106,9 +114,40 @@ class NoteEditActivity : AppCompatActivity() {
             }
         }
 
+        binding.btnSave.setOnClickListener {
+            saveCurrentNoteToDatabase()
+            hideKeyboard()
+        }
+
+        updateUndoRedoButtons()
         updateUndoRedoButtons()
     }
 
+    private fun saveCurrentNoteToDatabase() {
+        val title = binding.titleEditText.text.toString().trim()
+        val content = binding.contentEditText.text.toString().trim()
+
+        if (isNewNote && title.isEmpty() && content.isEmpty()) {
+            return
+        }
+
+        val updatedNote = currentNote?.copy(
+            title = title,
+            content = content,
+            date = getCurrentDate()
+        )
+
+        updatedNote?.let { note ->
+            lifecycleScope.launch {
+                noteDao.insertNote(note.toEntity())
+            }
+        }
+    }
+
+    private fun hideKeyboard() {
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.hideSoftInputFromWindow(binding.root.windowToken, 0)
+    }
     private fun loadNoteData() {
         currentNote = intent.getSerializableExtra(EXTRA_NOTE) as? Note
 
@@ -137,7 +176,7 @@ class NoteEditActivity : AppCompatActivity() {
     }
 
     private fun getCurrentDate(): String {
-        val sdf = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
+        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
         return sdf.format(Date())
     }
 
@@ -244,6 +283,12 @@ class NoteEditActivity : AppCompatActivity() {
     private fun handleExitWithAutoSave() {
         val currentTitle = binding.titleEditText.text.toString()
         val currentContent = binding.contentEditText.text.toString()
+
+        if (isNewNote && currentTitle.isEmpty() && currentContent.isEmpty()) {
+            setResult(RESULT_CANCELED)
+            finish()
+            return
+        }
 
         val updatedNote = currentNote?.copy(
             title = currentTitle,

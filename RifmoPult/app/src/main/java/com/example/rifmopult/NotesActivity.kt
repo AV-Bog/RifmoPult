@@ -11,6 +11,9 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.lifecycle.lifecycleScope
 import com.example.rifmopult.databinding.ActivityNotesBinding
 import kotlinx.coroutines.launch
+import java.util.Date
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 class NotesActivity : AppCompatActivity() {
 
@@ -89,7 +92,7 @@ class NotesActivity : AppCompatActivity() {
 
     private fun loadNotesFromDatabase() {
         lifecycleScope.launch {
-            val notesFromDb = noteDao.getAllNotes()
+            val notesFromDb = noteDao.getAllNotesSortedByDateDesc()
             allNotes.clear()
             allNotes.addAll(notesFromDb.map { it.toNote() })
             filteredNotes.clear()

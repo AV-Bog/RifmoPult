@@ -6,15 +6,12 @@ import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import com.example.rifmopult.databinding.ItemNoteBinding
 
-///реализует адаптер для RecyclerView
 class NotesAdapter(
     private val notes: List<Note>,
     private val onItemClick: (Note) -> Unit
 ) : RecyclerView.Adapter<NotesAdapter.NoteViewHolder>() {
 
-    ///RecyclerView.ViewHolder хранит ссылки на переиспользуемые вьюшки
     class NoteViewHolder(private val binding: ItemNoteBinding) : RecyclerView.ViewHolder(binding.root) {
-        ///подготавливает один элемент списка (item) к отображению
         fun bind(note: Note, onItemClick: (Note) -> Unit) {
             if (!note.title.isNullOrBlank()) {
                 binding.noteTitleTextView.visibility = View.VISIBLE
@@ -24,7 +21,7 @@ class NotesAdapter(
             }
 
             binding.noteContentTextView.text = note.content
-            binding.noteDateTextView.text = note.date
+            binding.noteDateTextView.text = DateUtils.formatForDisplay(note.date)
 
             itemView.setOnClickListener {
                 onItemClick(note)
@@ -42,4 +39,17 @@ class NotesAdapter(
     }
 
     override fun getItemCount(): Int = notes.size
+
+    object DateUtils {
+        fun formatForDisplay(storedDate: String): String {
+            return try {
+                val inputFormat = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault())
+                val outputFormat = java.text.SimpleDateFormat("dd.MM.yyyy", java.util.Locale.getDefault())
+                val date = inputFormat.parse(storedDate)
+                outputFormat.format(date ?: java.util.Date())
+            } catch (e: Exception) {
+                storedDate
+            }
+        }
+    }
 }
