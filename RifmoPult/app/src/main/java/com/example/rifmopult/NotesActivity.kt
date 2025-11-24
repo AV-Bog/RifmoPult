@@ -1,6 +1,7 @@
 package com.example.rifmopult
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
 import android.os.Bundle
 import android.text.Editable
@@ -50,10 +51,29 @@ class NotesActivity : AppCompatActivity() {
         val gridLayoutManager = GridLayoutManager(this, 2)
         binding.notesRecyclerView.layoutManager = gridLayoutManager
 
-        notesAdapter = NotesAdapter(filteredNotes) { note ->
-            openNoteDetail(note)
-        }
+        notesAdapter = NotesAdapter(
+            filteredNotes,
+            onItemClick = { note -> openNoteDetail(note) },
+            onItemLongClick = { note ->
+                showDeleteDialog(note)
+                true
+            }
+        )
         binding.notesRecyclerView.adapter = notesAdapter
+    }
+
+    private fun showDeleteDialog(note: Note) {
+        AlertDialog.Builder(this)
+            .setTitle("Удалить стих?")
+            .setMessage("Вы уверены, что хотите удалить «${note.title.ifEmpty { "Без названия" } }»?")
+            .setPositiveButton("Удалить") { _, _ ->
+                lifecycleScope.launch {
+                    noteDao.deleteNote(note.toEntity())
+                    loadNotesFromDatabase()
+                }
+            }
+            .setNegativeButton("Отмена", null)
+            .show()
     }
 
     private fun setupClickListeners() {

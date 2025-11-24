@@ -8,11 +8,14 @@ import com.example.rifmopult.databinding.ItemNoteBinding
 
 class NotesAdapter(
     private val notes: List<Note>,
-    private val onItemClick: (Note) -> Unit
+    private val onItemClick: (Note) -> Unit,
+    private val onItemLongClick: (Note) -> Boolean
 ) : RecyclerView.Adapter<NotesAdapter.NoteViewHolder>() {
 
     class NoteViewHolder(private val binding: ItemNoteBinding) : RecyclerView.ViewHolder(binding.root) {
-        fun bind(note: Note, onItemClick: (Note) -> Unit) {
+        fun bind(note: Note,
+                 onItemClick: (Note) -> Unit,
+                 onItemLongClick: (Note) -> Boolean) {
             if (!note.title.isNullOrBlank()) {
                 binding.noteTitleTextView.visibility = View.VISIBLE
                 binding.noteTitleTextView.text = note.title
@@ -23,9 +26,8 @@ class NotesAdapter(
             binding.noteContentTextView.text = note.content
             binding.noteDateTextView.text = DateUtils.formatForDisplay(note.date)
 
-            itemView.setOnClickListener {
-                onItemClick(note)
-            }
+            itemView.setOnClickListener { onItemClick(note) }
+            itemView.setOnLongClickListener { onItemLongClick(note) }
         }
     }
 
@@ -35,7 +37,7 @@ class NotesAdapter(
     }
 
     override fun onBindViewHolder(holder: NoteViewHolder, position: Int) {
-        holder.bind(notes[position], onItemClick)
+        holder.bind(notes[position], onItemClick, onItemLongClick)
     }
 
     override fun getItemCount(): Int = notes.size
