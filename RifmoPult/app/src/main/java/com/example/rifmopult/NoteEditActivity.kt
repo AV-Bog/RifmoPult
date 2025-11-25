@@ -353,29 +353,36 @@ class NoteEditActivity : AppCompatActivity() {
         val container = popupView.findViewById<com.google.android.flexbox.FlexboxLayout>(R.id.rhymeWordsContainer)
         val closeBtn = popupView.findViewById<ImageButton>(R.id.btnCloseRhyme)
 
-        val fakeRhymes = listOf("друг", "вокруг", "много", "пирог", "порог", "шар", "жар", "багаж",
-            "запах", "смех", "штуки", "туки", "каучуки", "бамбуки", "поруки", "хуки",  "физруки",
-            "ультразвуки", "уки", "друг", "вокруг", "много", "пирог", "порог", "шар", "жар", "багаж",
-            "запах", "смех", "штуки", "туки", "каучуки", "бамбуки", "поруки", "хуки",  "физруки",
-            "ультразвуки", "уки", "друг", "вокруг", "много", "пирог", "порог", "шар", "жар", "багаж",
-            "запах", "смех", "штуки", "туки", "каучуки", "бамбуки", "поруки", "хуки",  "физруки",
-            "ультразвуки", "уки", "друг", "вокруг", "много", "пирог", "порог", "шар", "жар", "багаж",
-            "запах", "смех", "штуки", "туки", "каучуки", "бамбуки", "поруки", "хуки",  "физруки",
-            "ультразвуки", "уки")
+        val loadingView = TextView(this).apply {
+            text = "Загрузка..."
+            setPadding(16, 8, 16, 8)
+        }
+        container.addView(loadingView)
 
-        fakeRhymes.forEach { rhyme ->
-            val textView = TextView(this).apply {
-                text = rhyme
-                setPadding(16, 8, 16, 8)
-                setBackgroundResource(R.drawable.rhyme_word_background)
+        lifecycleScope.launch{
+            val rhymes = RifmeNetParser.fetchRhymes(word)
+            container.removeAllViews()
+            rhymes.forEach { rhyme ->
+                val textView = TextView(this@NoteEditActivity).apply {
+                    text = rhyme
+                    setPadding(16, 8, 16, 8)
+                    setBackgroundResource(R.drawable.rhyme_word_background)
+                }
+                textView.layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    setMargins(8, 0, 16, 8)
+                }
+                container.addView(textView)
             }
-            textView.layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                setMargins(8, 0, 16, 8)
+            if (rhymes.isEmpty()) {
+                container.addView(TextView(this@NoteEditActivity).apply {
+                    text = "Не найдено рифм"
+                    setTextColor(getColor(android.R.color.darker_gray))
+                    setPadding(16, 8, 16, 8)
+                })
             }
-            container.addView(textView)
         }
 
         closeBtn.setOnClickListener {
