@@ -16,32 +16,46 @@ object RifmeNetParser {
         val client = HttpClient()
         return try {
             val encodedWord = URLEncoder.encode(word.trim().lowercase(), "UTF-8")
-            val url = "$BASE_URL$encodedWord"
+            val url = "https://rifme.net/r/$encodedWord"
 
             val html = client.get(url) {
                 header("User-Agent", "Mozilla/5.0 (Android) AppleWebKit/537.36")
             }.bodyAsText()
 
             val doc = Jsoup.parse(html)
-            val rhymes = mutableListOf<String>()
+            val result = mutableListOf<String>()
 
             doc.select("#tochnye li[data-w]").forEach { element ->
                 val rhyme = element.attr("data-w").trim()
-                if (rhyme.isNotEmpty() &&
-                    !rhyme.contains("://") &&
-                    rhyme != word &&
-                    rhyme.all { it.isLetter() || it == '-' || it == '\'' }) {
-                    rhymes.add(rhyme)
-                    if (rhymes.size >= limit) return@forEach
+                if (isValidRhyme(rhyme, word)) {
+                    result.add(rhyme)
+                    if (result.size >= limit) return@forEach
                 }
             }
 
-            rhymes
+            if (result.size < limit) {
+                doc.select("#meneestrogie li[data-w]").forEach { element ->
+                    val rhyme = element.attr("data-w").trim()
+                    if (isValidRhyme(rhyme, word)) {
+                        result.add(rhyme)
+                        if (result.size >= limit) return@forEach
+                    }
+                }
+            }
+
+            result
         } catch (e: Exception) {
             e.printStackTrace()
             emptyList()
         } finally {
             client.close()
         }
+    }
+
+    private fun isValidRhyme(rhyme: String, originalWord: String): Boolean {
+        return rhyme.isNotEmpty() &&
+                rhyme != originalWord &&
+                !rhyme.contains("://") &&
+                rhyme.all { it.isLetter() || it == '-' || it == '\'' }
     }
 }

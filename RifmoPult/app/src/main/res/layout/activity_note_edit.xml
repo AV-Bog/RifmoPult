@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
@@ -33,7 +34,7 @@
             android:layout_height="48dp"
             android:src="@drawable/ic_undo"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Откатить"/>
+            android:contentDescription="Откатить" />
 
         <ImageButton
             android:id="@+id/btnRedo"
@@ -41,7 +42,7 @@
             android:layout_height="48dp"
             android:src="@drawable/ic_redo"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Вернуть"/>
+            android:contentDescription="Вернуть" />
 
         <ImageButton
             android:id="@+id/btnSave"
@@ -51,6 +52,14 @@
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="Сохранить" />
 
+        <ImageButton
+            android:id="@+id/btnShare"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:src="@drawable/ic_share"
+            android:background="@android:color/transparent"
+            android:contentDescription="Поделиться"
+            app:tint="@android:color/black" />
     </LinearLayout>
 
     <EditText
@@ -77,6 +86,7 @@
         android:gravity="top"
         android:hint="Начни писать"
         android:inputType="textMultiLine"
-        android:minHeight="200dp"/>
+        android:minHeight="200dp"
+        android:backgroundTint="#3F51B5"/>
 
 </LinearLayout>

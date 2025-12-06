@@ -48,8 +48,8 @@ class NotesActivity : AppCompatActivity() {
     }
 
     private fun setupRecyclerView() {
-        val gridLayoutManager = GridLayoutManager(this, 2)
-        binding.notesRecyclerView.layoutManager = gridLayoutManager
+        val staggeredGrid = androidx.recyclerview.widget.StaggeredGridLayoutManager(2, androidx.recyclerview.widget.StaggeredGridLayoutManager.VERTICAL)
+        binding.notesRecyclerView.layoutManager = staggeredGrid
 
         notesAdapter = NotesAdapter(
             filteredNotes,

@@ -1,7 +1,6 @@
 package com.example.rifmopult
 
 import android.annotation.SuppressLint
-import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
@@ -13,7 +12,6 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuItem
-import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
@@ -42,6 +40,8 @@ class NoteEditActivity : AppCompatActivity() {
     private var isUndoingOrRedoing = false
 
     private var selectedWord = ""
+
+    private var hasUnsavedChanges = false
 
     companion object {
         const val EXTRA_NOTE = "extra_note"
@@ -119,6 +119,23 @@ class NoteEditActivity : AppCompatActivity() {
             hideKeyboard()
         }
 
+        binding.btnShare.setOnClickListener {
+            val title = binding.titleEditText.text.toString().trim()
+            val content = binding.contentEditText.text.toString().trim()
+
+            val textToShare = if (title.isNotEmpty()) "$title\n\n$content" else content
+
+            if (textToShare.isNotEmpty()) {
+                val sendIntent = Intent().apply {
+                    action = Intent.ACTION_SEND
+                    putExtra(Intent.EXTRA_TEXT, textToShare)
+                    type = "text/plain"
+                }
+                val shareIntent = Intent.createChooser(sendIntent, null)
+                startActivity(shareIntent)
+            }
+        }
+
         updateUndoRedoButtons()
         updateUndoRedoButtons()
     }
@@ -173,6 +190,22 @@ class NoteEditActivity : AppCompatActivity() {
 
         binding.titleEditText.setText(initialState.title)
         binding.contentEditText.setText(initialState.content)
+
+        binding.btnUndo.visibility = View.GONE
+        binding.btnRedo.visibility = View.GONE
+
+        hasUnsavedChanges = false
+        updateSaveButton()
+    }
+
+    private fun updateSaveButton() {
+        val color = if (hasUnsavedChanges) {
+            getColor(android.R.color.black)
+        } else {
+            getColor(android.R.color.darker_gray)
+        }
+        binding.btnSave.setColorFilter(color)
+        binding.btnSave.isEnabled = hasUnsavedChanges
     }
 
     private fun getCurrentDate(): String {
@@ -188,7 +221,11 @@ class NoteEditActivity : AppCompatActivity() {
             content = binding.contentEditText.text.toString()
         )
 
-        if (historyIndex >= 0 && history[historyIndex] == currentState) return
+        if (historyIndex >= 0 && history[historyIndex] == currentState) {
+            hasUnsavedChanges = false
+            updateSaveButton()
+            return
+        }
 
         while (history.size > historyIndex + 1) {
             history.removeAt(history.size - 1)
@@ -202,20 +239,38 @@ class NoteEditActivity : AppCompatActivity() {
         history.add(currentState)
         historyIndex = history.size - 1
         updateUndoRedoButtons()
+
+        hasUnsavedChanges = true
+        binding.btnUndo.visibility = View.VISIBLE
+        binding.btnRedo.visibility = View.VISIBLE
+        updateSaveButton()
     }
 
     private fun updateUndoRedoButtons() {
-        val canUndo = historyIndex > 0
-        val canRedo = historyIndex < history.size - 1
+        binding.btnSave.setOnClickListener {
+            if (!hasUnsavedChanges) return@setOnClickListener
 
-        val activeColor = getColor(android.R.color.black)
-        val disabledColor = getColor(android.R.color.darker_gray)
+            saveCurrentNoteToDatabase()
 
-        binding.btnUndo.setColorFilter(if (canUndo) activeColor else disabledColor)
-        binding.btnRedo.setColorFilter(if (canRedo) activeColor else disabledColor)
+            val currentState = NoteState(
+                title = binding.titleEditText.text.toString(),
+                content = binding.contentEditText.text.toString()
+            )
+            history.clear()
+            history.add(currentState)
+            historyIndex = 0
+            hasUnsavedChanges = false
 
-        binding.btnUndo.isEnabled = canUndo
-        binding.btnRedo.isEnabled = canRedo
+            hideKeyboard()
+
+            binding.btnUndo.visibility = View.GONE
+            binding.btnRedo.visibility = View.GONE
+
+            rhymePopup?.dismiss()
+            rhymePopup = null
+
+            updateSaveButton()
+        }
     }
 
     private fun setupTextChangeListeners() {
