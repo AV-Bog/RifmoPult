@@ -154,8 +154,27 @@ class NoteEditActivity : AppCompatActivity() {
         }
 
         binding.btnSave.setOnClickListener {
+            if (!hasUnsavedChanges) return@setOnClickListener
+
             saveCurrentNoteToDatabase()
             hideKeyboard()
+
+            val currentState = NoteState(
+                title = binding.titleEditText.text.toString(),
+                content = stripSyllableHints(binding.contentEditText.text.toString())
+            )
+            history.clear()
+            history.add(currentState)
+            historyIndex = 0
+            hasUnsavedChanges = false
+
+            binding.btnUndo.visibility = View.GONE
+            binding.btnRedo.visibility = View.GONE
+
+            rhymePopup?.dismiss()
+            rhymePopup = null
+
+            updateSaveButton()
         }
 
         binding.btnShare.setOnClickListener {
@@ -298,7 +317,7 @@ class NoteEditActivity : AppCompatActivity() {
 
             val currentState = NoteState(
                 title = binding.titleEditText.text.toString(),
-                content = binding.contentEditText.text.toString()
+                content = stripSyllableHints(binding.contentEditText.text.toString())
             )
             history.clear()
             history.add(currentState)
@@ -674,10 +693,10 @@ class NoteEditActivity : AppCompatActivity() {
         return text.count { it in vowels }
     }
 
-    private val syllableHintRegex = """\s*·?\s*\([0-9]+\)${'$'}""".toRegex()
+    private val syllableHintRegex = """\s*·[0-9]+\s*$""".toRegex()
 
     private fun stripSyllableHints(text: String): String {
-        return text.split('\n').joinToString("\n") { line ->
+        return text.lines().joinToString("\n") { line ->
             line.replace(syllableHintRegex, "")
         }
     }

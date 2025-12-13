@@ -147,8 +147,9 @@ class NotesActivity : AppCompatActivity() {
             Activity.RESULT_OK -> {
                 val updatedNote = result.data?.getSerializableExtra(NoteEditActivity.EXTRA_NOTE_RESULT) as? Note
                 updatedNote?.let { note ->
+                    val cleanNote = note.copy(content = stripSyllableHints(note.content))
                     lifecycleScope.launch {
-                        noteDao.insertNote(note.toEntity())
+                        noteDao.insertNote(cleanNote.toEntity())
                         loadNotesFromDatabase()
                     }
                 }
@@ -162,6 +163,12 @@ class NotesActivity : AppCompatActivity() {
                     }
                 }
             }
+        }
+    }
+    private fun stripSyllableHints(text: String): String {
+        val syllableHintRegex = """\s*\([0-9]+\)\s*$""".toRegex()
+        return text.lines().joinToString("\n") { line ->
+            line.replace(syllableHintRegex, "")
         }
     }
 }
