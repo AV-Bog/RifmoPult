@@ -73,6 +73,7 @@ class NoteEditActivity : AppCompatActivity() {
 
     private lateinit var noteDao: NoteDao
 
+    @SuppressLint("ClickableViewAccessibility")
     private val rhymeTouchListener = View.OnTouchListener { view, event ->
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
@@ -159,9 +160,9 @@ class NoteEditActivity : AppCompatActivity() {
 
         binding.btnShare.setOnClickListener {
             val title = binding.titleEditText.text.toString().trim()
-            val content = binding.contentEditText.text.toString().trim()
+            val cleanContent = stripSyllableHints(binding.contentEditText.text.toString()).trim()
 
-            val textToShare = if (title.isNotEmpty()) "$title\n\n$content" else content
+            val textToShare = if (title.isNotEmpty()) "$title\n\n$cleanContent" else cleanContent
 
             if (textToShare.isNotEmpty()) {
                 val sendIntent = Intent().apply {
@@ -180,15 +181,15 @@ class NoteEditActivity : AppCompatActivity() {
 
     private fun saveCurrentNoteToDatabase() {
         val title = binding.titleEditText.text.toString().trim()
-        val content = binding.contentEditText.text.toString().trim()
+        val cleanContent = stripSyllableHints(binding.contentEditText.text.toString()).trim()
 
-        if (isNewNote && title.isEmpty() && content.isEmpty()) {
+        if (isNewNote && title.isEmpty() && cleanContent.isEmpty()) {
             return
         }
 
         val updatedNote = currentNote?.copy(
             title = title,
-            content = content,
+            content = cleanContent,
             date = getCurrentDate()
         )
 
@@ -197,12 +198,20 @@ class NoteEditActivity : AppCompatActivity() {
                 noteDao.insertNote(note.toEntity())
             }
         }
+
+        val currentState = NoteState(title = title, content = cleanContent)
+        history.clear()
+        history.add(currentState)
+        historyIndex = 0
+        hasUnsavedChanges = false
+        updateSaveButton()
     }
 
     private fun hideKeyboard() {
         val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
         imm.hideSoftInputFromWindow(binding.root.windowToken, 0)
     }
+
     private fun loadNoteData() {
         currentNote = intent.getSerializableExtra(EXTRA_NOTE) as? Note
 
@@ -227,7 +236,7 @@ class NoteEditActivity : AppCompatActivity() {
         historyIndex = 0
 
         binding.titleEditText.setText(initialState.title)
-        binding.contentEditText.setText(initialState.content)
+        binding.contentEditText.setText(addSyllableHints(initialState.content))
 
         binding.btnUndo.visibility = View.GONE
         binding.btnRedo.visibility = View.GONE
@@ -251,13 +260,11 @@ class NoteEditActivity : AppCompatActivity() {
         return sdf.format(Date())
     }
 
-    private fun saveToHistory() {
+    private fun saveToHistoryWithCleanText(cleanContent: String) {
         if (isUndoingOrRedoing) return
 
-        val currentState = NoteState(
-            title = binding.titleEditText.text.toString(),
-            content = binding.contentEditText.text.toString()
-        )
+        val currentTitle = binding.titleEditText.text.toString()
+        val currentState = NoteState(title = currentTitle, content = cleanContent)
 
         if (historyIndex >= 0 && history[historyIndex] == currentState) {
             hasUnsavedChanges = false
@@ -268,7 +275,6 @@ class NoteEditActivity : AppCompatActivity() {
         while (history.size > historyIndex + 1) {
             history.removeAt(history.size - 1)
         }
-
         if (history.size >= MAX_HISTORY_SIZE) {
             history.removeAt(0)
             historyIndex--
@@ -311,34 +317,58 @@ class NoteEditActivity : AppCompatActivity() {
         }
     }
 
-    private fun setupTextChangeListeners() {
-        var lastText = ""
+    private var isUpdatingText = false
 
-        val textWatcher = object : TextWatcher {
+    private fun setupTextChangeListeners() {
+        val contentTextWatcher = object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
 
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                lastText = s.toString()
-            }
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
 
             override fun afterTextChanged(s: Editable?) {
-                if (isUndoingOrRedoing) return
+                if (isUpdatingText || isUndoingOrRedoing) return
+
+                val currentText = s?.toString() ?: ""
+                val cleanText = stripSyllableHints(currentText)
+                val hintedText = addSyllableHints(cleanText)
+
+                if (hintedText != currentText) {
+                    val cursorPos = binding.contentEditText.selectionStart
+                    isUpdatingText = true
+                    s?.clear()
+                    s?.append(hintedText)
+                    isUpdatingText = false
+
+                    val newPos = cursorPos.coerceAtMost(hintedText.length)
+                    binding.contentEditText.setSelection(newPos)
+                }
 
                 val now = System.currentTimeMillis()
-                val text = lastText
-
-                val endsWithWordSeparator = text.isNotEmpty() &&
-                        (text.last() == ' ' || text.last() == '.' || text.last() == '\n')
-
-                if (endsWithWordSeparator || now - lastAutoSaveTime > AUTO_SAVE_DELAY) {
-                    saveToHistory()
+                if (now - lastAutoSaveTime > AUTO_SAVE_DELAY) {
+                    saveToHistoryWithCleanText(cleanText)
                     lastAutoSaveTime = now
                 }
             }
         }
 
-        binding.titleEditText.addTextChangedListener(textWatcher)
-        binding.contentEditText.addTextChangedListener(textWatcher)
+        val titleTextWatcher = object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+
+            override fun afterTextChanged(s: Editable?) {
+                if (isUndoingOrRedoing) return
+
+                val now = System.currentTimeMillis()
+                if (now - lastAutoSaveTime > AUTO_SAVE_DELAY) {
+                    saveToHistoryWithCleanText(binding.contentEditText.text.toString().let { stripSyllableHints(it) })
+                    lastAutoSaveTime = now
+                }
+            }
+        }
+
+        binding.contentEditText.addTextChangedListener(contentTextWatcher)
+        binding.titleEditText.addTextChangedListener(titleTextWatcher)
 
         binding.contentEditText.setCustomSelectionActionModeCallback(object : ActionMode.Callback {
             override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
@@ -357,7 +387,8 @@ class NoteEditActivity : AppCompatActivity() {
                     val end = editText.selectionEnd
                     if (start >= 0 && end >= 0) {
                         val text = editText.text.toString()
-                        val word = text.substring(
+                        val cleanText = stripSyllableHints(text)
+                        val word = cleanText.substring(
                             kotlin.math.min(start, end),
                             kotlin.math.max(start, end)
                         ).trim()
@@ -375,9 +406,9 @@ class NoteEditActivity : AppCompatActivity() {
 
     private fun handleExitWithAutoSave() {
         val currentTitle = binding.titleEditText.text.toString()
-        val currentContent = binding.contentEditText.text.toString()
+        val cleanContent = stripSyllableHints(binding.contentEditText.text.toString()).trim()
 
-        if (isNewNote && currentTitle.isEmpty() && currentContent.isEmpty()) {
+        if (isNewNote && currentTitle.isEmpty() && cleanContent.isEmpty()) {
             setResult(RESULT_CANCELED)
             finish()
             return
@@ -385,14 +416,14 @@ class NoteEditActivity : AppCompatActivity() {
 
         val updatedNote = currentNote?.copy(
             title = currentTitle,
-            content = currentContent,
+            content = cleanContent,
             date = getCurrentDate()
         )
 
         val resultIntent = Intent().apply {
             putExtra(EXTRA_NOTE_RESULT, updatedNote)
         }
-        setResult(/* resultCode = */ RESULT_OK, /* data = */ resultIntent)
+        setResult(RESULT_OK, resultIntent)
         finish()
     }
 
@@ -408,6 +439,10 @@ class NoteEditActivity : AppCompatActivity() {
         return when (item.itemId) {
             R.id.action_delete -> {
                 deleteNote()
+                true
+            }
+            R.id.action_settings -> {
+                startActivity(Intent(this, SettingsActivity::class.java))
                 true
             }
             else -> super.onOptionsItemSelected(item)
@@ -632,5 +667,30 @@ class NoteEditActivity : AppCompatActivity() {
 
         draggedRhyme = null
         isDragging = false
+    }
+
+    private fun countSyllables(text: String): Int {
+        val vowels = "аеёиоуыэюяАЕЁИОУЫЭЮЯ"
+        return text.count { it in vowels }
+    }
+
+    private val syllableHintRegex = """\s*·?\s*\([0-9]+\)${'$'}""".toRegex()
+
+    private fun stripSyllableHints(text: String): String {
+        return text.split('\n').joinToString("\n") { line ->
+            line.replace(syllableHintRegex, "")
+        }
+    }
+
+    private fun addSyllableHints(text: String): String {
+        return text.split('\n').joinToString("\n") { line ->
+            val cleanLine = line.replace(syllableHintRegex, "")
+            if (cleanLine.isBlank()) {
+                cleanLine
+            } else {
+                val count = countSyllables(cleanLine)
+                "$cleanLine ·$count"
+            }
+        }
     }
 }

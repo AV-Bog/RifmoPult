@@ -80,6 +80,10 @@ class NotesActivity : AppCompatActivity() {
         binding.fabAddNote.setOnClickListener {
             createNewNote()
         }
+
+        binding.btnSettings.setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }
     }
 
     private fun setupSearch() {

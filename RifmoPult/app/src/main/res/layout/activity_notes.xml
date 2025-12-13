@@ -14,6 +14,7 @@
         android:layout_margin="4dp">
 
         <ImageButton
+            android:id="@+id/btnSettings"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:src="@drawable/ic_nastroiki"
@@ -22,7 +23,6 @@
             android:layout_gravity="end"
             android:layout_marginEnd="32dp"/>
 
-        <!-- Заголовок -->
         <TextView
             android:id="@+id/titleTextView"
             android:layout_width="match_parent"
@@ -34,7 +34,6 @@
             android:textSize="24sp"
             android:textStyle="bold"/>
 
-        <!-- Поиск -->
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/searchLayout"
             style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
