@@ -3,25 +3,20 @@ plugins {
     alias(libs.plugins.kotlin.android)
     id("kotlin-kapt")
 }
-
 android {
     namespace = "com.example.rifmopult"
     compileSdk = 36
-
     defaultConfig {
         applicationId = "com.example.rifmopult"
         minSdk = 24
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
-
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
-
     buildFeatures {
         viewBinding = true
     }
-
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -29,6 +24,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
     compileOptions {
@@ -39,7 +35,6 @@ android {
         jvmTarget = "1.8"
     }
 }
-
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)

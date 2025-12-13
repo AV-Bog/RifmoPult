@@ -5,14 +5,19 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.text.Editable
 import android.text.TextWatcher
+import android.util.TypedValue
 import android.view.ActionMode
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuItem
+import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
 import android.widget.LinearLayout
@@ -28,6 +33,10 @@ import androidx.core.graphics.drawable.toDrawable
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 
+fun Editable.insert(position: Int, text: String) {
+    replace(position, position, text)
+}
+
 class NoteEditActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityNoteEditBinding
@@ -40,6 +49,15 @@ class NoteEditActivity : AppCompatActivity() {
     private var isUndoingOrRedoing = false
 
     private var selectedWord = ""
+
+    private var dragView: TextView? = null
+    private var dragWindow: PopupWindow? = null
+    private var draggedRhyme: String? = null
+    private var isDragging = false
+
+    private var dragInitHandler = Handler(Looper.getMainLooper())
+    private var isDraggingInitiated = false
+    private var currentDragWord = ""
 
     private var hasUnsavedChanges = false
 
@@ -54,6 +72,26 @@ class NoteEditActivity : AppCompatActivity() {
     data class NoteState(val title: String, val content: String)
 
     private lateinit var noteDao: NoteDao
+
+    private val rhymeTouchListener = View.OnTouchListener { view, event ->
+        when (event.action) {
+            MotionEvent.ACTION_DOWN -> {
+                val word = (view as TextView).text.toString()
+                startDraggingRhyme(word, event)
+                true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                updateCursorPosition(event)
+                true
+            }
+            MotionEvent.ACTION_UP,
+            MotionEvent.ACTION_CANCEL -> {
+                dropRhyme(event)
+                true
+            }
+            else -> false
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -405,53 +443,92 @@ class NoteEditActivity : AppCompatActivity() {
         val title = popupView.findViewById<TextView>(R.id.rhymeTitle)
         title.text = "Рифма к слову: $word"
 
+        val scrollView = popupView.findViewById<ScrollView>(R.id.rhymeScrollView)
         val container = popupView.findViewById<com.google.android.flexbox.FlexboxLayout>(R.id.rhymeWordsContainer)
         val closeBtn = popupView.findViewById<ImageButton>(R.id.btnCloseRhyme)
 
+        container.removeAllViews()
         val loadingView = TextView(this).apply {
             text = "Загрузка..."
             setPadding(16, 8, 16, 8)
         }
         container.addView(loadingView)
 
-        lifecycleScope.launch{
+        lifecycleScope.launch {
             val rhymes = RifmeNetParser.fetchRhymes(word)
             container.removeAllViews()
-            rhymes.forEach { rhyme ->
-                val textView = TextView(this@NoteEditActivity).apply {
-                    text = rhyme
-                    setPadding(16, 8, 16, 8)
-                    setBackgroundResource(R.drawable.rhyme_word_background)
-                }
-                textView.layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    setMargins(8, 0, 16, 8)
-                }
-                container.addView(textView)
-            }
+
             if (rhymes.isEmpty()) {
                 container.addView(TextView(this@NoteEditActivity).apply {
                     text = "Не найдено рифм"
                     setTextColor(getColor(android.R.color.darker_gray))
                     setPadding(16, 8, 16, 8)
                 })
+            } else {
+                rhymes.forEach { rhyme ->
+                    val textView = TextView(this@NoteEditActivity).apply {
+                        text = rhyme
+                        setPadding(16, 8, 16, 8)
+                        setBackgroundResource(R.drawable.rhyme_word_background)
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            setMargins(8, 0, 16, 8)
+                        }
+
+                        setOnTouchListener { _, event ->
+                            when (event.action) {
+                                MotionEvent.ACTION_DOWN -> {
+                                    currentDragWord = text.toString()
+                                    isDraggingInitiated = false
+
+                                    scrollView.requestDisallowInterceptTouchEvent(true)
+
+                                    dragInitHandler.removeCallbacksAndMessages(null)
+                                    dragInitHandler.postDelayed({
+                                        isDraggingInitiated = true
+                                        runOnUiThread {
+                                            startDraggingRhyme(currentDragWord, event)
+                                        }
+                                    }, ViewConfiguration.getLongPressTimeout().toLong())
+                                    true
+                                }
+
+                                MotionEvent.ACTION_MOVE -> {
+                                    if (isDraggingInitiated) {
+                                        updateCursorPosition(event)
+                                        true
+                                    } else {
+                                        true
+                                    }
+                                }
+
+                                MotionEvent.ACTION_UP,
+                                MotionEvent.ACTION_CANCEL -> {
+                                    dragInitHandler.removeCallbacksAndMessages(null)
+                                    scrollView.requestDisallowInterceptTouchEvent(false)
+
+                                    if (isDraggingInitiated) {
+                                        dropRhyme(event)
+                                        isDraggingInitiated = false
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                }
+
+                                else -> false
+                            }
+                        }
+                    }
+                    container.addView(textView)
+                }
             }
         }
 
         closeBtn.setOnClickListener {
             rhymePopup?.dismiss()
-        }
-
-        val location = IntArray(2)
-        binding.root.getLocationOnScreen(location)
-
-        val keyboardHeight = getKeyboardHeight()
-        if (keyboardHeight > 0) {
-            resources.displayMetrics.heightPixels - keyboardHeight - (resources.displayMetrics.heightPixels * 0.4).toInt()
-        } else {
-            resources.displayMetrics.heightPixels - (resources.displayMetrics.heightPixels * 0.4).toInt()
         }
 
         rhymePopup?.showAtLocation(binding.root, Gravity.BOTTOM, 0, 0)
@@ -464,4 +541,96 @@ class NoteEditActivity : AppCompatActivity() {
         return screenHeight - rect.bottom
     }
 
+    private fun Char.isPunctuation(): Boolean {
+        return this in setOf('.', ',', '!', '?', ':', ';', '-', '—', '(', ')', '"', '\'', '…', '[', ']', '{', '}')
+    }
+
+    private fun startDraggingRhyme(word: String, event: MotionEvent) {
+        draggedRhyme = word
+        isDragging = true
+
+        val dragTextView = TextView(this).apply {
+            text = word
+            setTextColor(Color.BLACK)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+            setBackgroundResource(R.drawable.rhyme_word_background)
+            setPadding(16, 8, 16, 8)
+        }
+
+        dragView = dragTextView
+
+        val popup = PopupWindow(
+            dragTextView,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply {
+            isFocusable = false
+            isOutsideTouchable = false
+            setBackgroundDrawable(null)
+            elevation = 8f
+        }
+
+        dragWindow = popup
+        popup.showAtLocation(binding.root, Gravity.NO_GRAVITY,
+            (event.rawX - 30).toInt(),
+            (event.rawY - 30).toInt()
+        )
+    }
+
+    private fun updateCursorPosition(event: MotionEvent) {
+        if (!isDragging || dragWindow == null) return
+
+        dragWindow?.update(
+            (event.rawX - 30).toInt(),
+            (event.rawY - 30).toInt(),
+            -1,
+            -1
+        )
+
+        val editText = binding.contentEditText
+        val location = IntArray(2)
+        editText.getLocationOnScreen(location)
+
+        val x = event.rawX - location[0]
+        val y = event.rawY - location[1]
+
+        if (x >= 0 && x <= editText.width && y >= 0 && y <= editText.height) {
+            val layout = editText.layout ?: return
+            val line = layout.getLineForVertical(y.toInt())
+            val offset = layout.getOffsetForHorizontal(line, x.toFloat())
+            editText.setSelection(offset)
+        }
+    }
+
+    private fun dropRhyme(event: MotionEvent) {
+        if (!isDragging) return
+
+        dragWindow?.dismiss()
+        dragWindow = null
+        dragView = null
+
+        val editText = binding.contentEditText
+        val location = IntArray(2)
+        editText.getLocationOnScreen(location)
+
+        val x = event.rawX - location[0]
+        val y = event.rawY - location[1]
+
+        if (x >= 0 && x <= editText.width && y >= 0 && y <= editText.height) {
+            val word = draggedRhyme ?: return
+            val cursorPos = editText.selectionStart
+            val text = editText.text
+
+            val needsSpace = cursorPos > 0 && cursorPos < text.length &&
+                    !text[cursorPos - 1].isWhitespace() &&
+                    !text[cursorPos - 1].isPunctuation()
+
+            val toInsert = if (needsSpace) " $word" else word
+            text.insert(cursorPos, toInsert)
+            editText.setSelection(cursorPos + toInsert.length)
+        }
+
+        draggedRhyme = null
+        isDragging = false
+    }
 }
