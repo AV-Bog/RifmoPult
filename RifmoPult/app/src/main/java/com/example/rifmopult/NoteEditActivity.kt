@@ -201,7 +201,7 @@ class NoteEditActivity : AppCompatActivity() {
 
     private fun saveCurrentNoteToDatabase() {
         val title = binding.titleEditText.text.toString().trim()
-        val cleanContent = stripSyllableHints(binding.contentEditText.text.toString()).trim()
+        val cleanContent = binding.contentEditText.text.toString().trim()
 
         if (isNewNote && title.isEmpty() && cleanContent.isEmpty()) {
             return
@@ -273,7 +273,7 @@ class NoteEditActivity : AppCompatActivity() {
             binding.noteDateTextView.text = "Изменено: $displayDate"
         }
 
-        binding.contentEditText.setText(addSyllableHints(initialState.content))
+        binding.contentEditText.setText(initialState.content)
 
         binding.btnUndo.visibility = View.GONE
         binding.btnRedo.visibility = View.GONE
@@ -357,36 +357,6 @@ class NoteEditActivity : AppCompatActivity() {
     private var isUpdatingText = false
 
     private fun setupTextChangeListeners() {
-        val contentTextWatcher = object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-
-            override fun afterTextChanged(s: Editable?) {
-                if (isUpdatingText || isUndoingOrRedoing) return
-
-                val currentText = s?.toString() ?: ""
-                val cleanText = stripSyllableHints(currentText)
-                val hintedText = addSyllableHints(cleanText)
-
-                if (hintedText != currentText) {
-                    val cursorPos = binding.contentEditText.selectionStart
-                    isUpdatingText = true
-                    s?.clear()
-                    s?.append(hintedText)
-                    isUpdatingText = false
-
-                    val newPos = cursorPos.coerceAtMost(hintedText.length)
-                    binding.contentEditText.setSelection(newPos)
-                }
-
-                val now = System.currentTimeMillis()
-                if (now - lastAutoSaveTime > AUTO_SAVE_DELAY) {
-                    saveToHistoryWithCleanText(cleanText)
-                    lastAutoSaveTime = now
-                }
-            }
-        }
 
         val titleTextWatcher = object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -403,8 +373,16 @@ class NoteEditActivity : AppCompatActivity() {
                 }
             }
         }
+        binding.contentEditText.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                val cleanText = s?.toString() ?: ""
+                val hintedText = addSyllableHintsForDisplay(cleanText)
+                binding.syllableOverlay.text = hintedText
+            }
+        })
 
-        binding.contentEditText.addTextChangedListener(contentTextWatcher)
         binding.titleEditText.addTextChangedListener(titleTextWatcher)
 
         binding.contentEditText.setCustomSelectionActionModeCallback(object : ActionMode.Callback {
@@ -439,6 +417,12 @@ class NoteEditActivity : AppCompatActivity() {
                 return false
             }
         })
+    }
+
+    private fun addSyllableHintsForDisplay(text: String): String {
+        return text.split('\n').joinToString("\n") { line ->
+            if (line.isBlank()) line else "$line ·${countSyllables(line)}"
+        }
     }
 
     private fun handleExitWithAutoSave() {
