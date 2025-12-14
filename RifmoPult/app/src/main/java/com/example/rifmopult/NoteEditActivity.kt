@@ -258,6 +258,21 @@ class NoteEditActivity : AppCompatActivity() {
         originalState = initialState
 
         binding.titleEditText.setText(initialState.title)
+        if (isNewNote) {
+            binding.noteDateTextView.visibility = View.GONE
+        } else {
+            binding.noteDateTextView.visibility = View.VISIBLE
+            val displayDate = try {
+                val inputFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+                val date = inputFormat.parse(currentNote?.date ?: "") ?: Date()
+                val outputFormat = SimpleDateFormat("d MMMM yyyy, HH:mm", Locale("ru"))
+                outputFormat.format(date)
+            } catch (e: Exception) {
+                currentNote?.date ?: ""
+            }
+            binding.noteDateTextView.text = "Изменено: $displayDate"
+        }
+
         binding.contentEditText.setText(addSyllableHints(initialState.content))
 
         binding.btnUndo.visibility = View.GONE

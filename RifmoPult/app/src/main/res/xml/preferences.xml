@@ -2,6 +2,6 @@
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
     <SwitchPreferenceCompat
         android:key="enable_syllable_panel"
-        android:title="Показывать панель слогов"
+        android:title="Показывать подсчет слогов"
         android:defaultValue="false" />
 </PreferenceScreen>
