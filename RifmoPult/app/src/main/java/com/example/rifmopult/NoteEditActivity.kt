@@ -169,13 +169,11 @@ class NoteEditActivity : AppCompatActivity() {
             historyIndex = 0
             hasUnsavedChanges = false
 
-            binding.btnUndo.visibility = View.GONE
-            binding.btnRedo.visibility = View.GONE
+            updateUndoRedoButtons()
+            updateSaveButton()
 
             rhymePopup?.dismiss()
             rhymePopup = null
-
-            updateSaveButton()
         }
 
         binding.btnShare.setOnClickListener {
@@ -195,7 +193,6 @@ class NoteEditActivity : AppCompatActivity() {
             }
         }
 
-        updateUndoRedoButtons()
         updateUndoRedoButtons()
     }
 
@@ -319,6 +316,7 @@ class NoteEditActivity : AppCompatActivity() {
 
         history.add(currentState)
         historyIndex = history.size - 1
+
         updateUndoRedoButtons()
 
         hasUnsavedChanges = true
@@ -328,51 +326,34 @@ class NoteEditActivity : AppCompatActivity() {
     }
 
     private fun updateUndoRedoButtons() {
-        binding.btnSave.setOnClickListener {
-            if (!hasUnsavedChanges) return@setOnClickListener
+        binding.btnUndo.visibility = if (history.size > 1) View.VISIBLE else View.GONE
+        binding.btnRedo.visibility = if (history.size > 1 && historyIndex < history.size - 1) View.VISIBLE else View.GONE
 
-            saveCurrentNoteToDatabase()
-
-            val currentState = NoteState(
-                title = binding.titleEditText.text.toString(),
-                content = stripSyllableHints(binding.contentEditText.text.toString())
-            )
-            history.clear()
-            history.add(currentState)
-            historyIndex = 0
-            hasUnsavedChanges = false
-
-            hideKeyboard()
-
-            binding.btnUndo.visibility = View.GONE
-            binding.btnRedo.visibility = View.GONE
-
-            rhymePopup?.dismiss()
-            rhymePopup = null
-
-            updateSaveButton()
-        }
+        binding.btnUndo.isEnabled = historyIndex > 0
+        binding.btnRedo.isEnabled = historyIndex < history.size - 1
     }
-
-    private var isUpdatingText = false
 
     private fun setupTextChangeListeners() {
 
-        val titleTextWatcher = object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-
-            override fun afterTextChanged(s: Editable?) {
-                if (isUndoingOrRedoing) return
-
+        val updateHistoryIfNeeded = {
+            if (!isUndoingOrRedoing) {
                 val now = System.currentTimeMillis()
                 if (now - lastAutoSaveTime > AUTO_SAVE_DELAY) {
-                    saveToHistoryWithCleanText(binding.contentEditText.text.toString().let { stripSyllableHints(it) })
+                    val cleanContent = stripSyllableHints(binding.contentEditText.text.toString())
+                    saveToHistoryWithCleanText(cleanContent)
                     lastAutoSaveTime = now
                 }
             }
         }
+
+        binding.titleEditText.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                updateHistoryIfNeeded()
+            }
+        })
+
         binding.contentEditText.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
@@ -380,10 +361,10 @@ class NoteEditActivity : AppCompatActivity() {
                 val cleanText = s?.toString() ?: ""
                 val hintedText = addSyllableHintsForDisplay(cleanText)
                 binding.syllableOverlay.text = hintedText
+
+                updateHistoryIfNeeded()
             }
         })
-
-        binding.titleEditText.addTextChangedListener(titleTextWatcher)
 
         binding.contentEditText.setCustomSelectionActionModeCallback(object : ActionMode.Callback {
             override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
