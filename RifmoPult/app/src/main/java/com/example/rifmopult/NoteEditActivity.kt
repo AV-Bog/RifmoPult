@@ -60,6 +60,7 @@ class NoteEditActivity : AppCompatActivity() {
     private var currentDragWord = ""
 
     private var hasUnsavedChanges = false
+    private var originalState: NoteState? = null
 
     companion object {
         const val EXTRA_NOTE = "extra_note"
@@ -254,6 +255,8 @@ class NoteEditActivity : AppCompatActivity() {
         history.add(initialState)
         historyIndex = 0
 
+        originalState = initialState
+
         binding.titleEditText.setText(initialState.title)
         binding.contentEditText.setText(addSyllableHints(initialState.content))
 
@@ -425,7 +428,8 @@ class NoteEditActivity : AppCompatActivity() {
 
     private fun handleExitWithAutoSave() {
         val currentTitle = binding.titleEditText.text.toString()
-        val cleanContent = stripSyllableHints(binding.contentEditText.text.toString()).trim()
+        val currentContentWithHints = binding.contentEditText.text.toString()
+        val cleanContent = stripSyllableHints(currentContentWithHints).trim()
 
         if (isNewNote && currentTitle.isEmpty() && cleanContent.isEmpty()) {
             setResult(RESULT_CANCELED)
@@ -433,7 +437,19 @@ class NoteEditActivity : AppCompatActivity() {
             return
         }
 
-        val updatedNote = currentNote?.copy(
+        val originalTitle = currentNote?.title ?: ""
+        val originalContent = currentNote?.content ?: ""
+
+        val hasChanges = (currentTitle != originalTitle) || (cleanContent != originalContent)
+
+        if (!hasChanges) {
+            setResult(RESULT_CANCELED)
+            finish()
+            return
+        }
+
+        val updatedNote = Note(
+            id = currentNote?.id ?: System.currentTimeMillis(),
             title = currentTitle,
             content = cleanContent,
             date = getCurrentDate()
