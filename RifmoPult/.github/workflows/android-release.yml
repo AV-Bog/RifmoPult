@@ -1,4 +1,4 @@
-name: Проверка сборки
+name: Проверка сборки и прохождения модульных тестов
 
 on:
   push:
@@ -19,3 +19,6 @@ jobs:
 
       - name: Сборка debug-версии
         run: ./gradlew assembleDebug
+
+      - name: Запуск модульных тестов
+        run: ./gradlew test

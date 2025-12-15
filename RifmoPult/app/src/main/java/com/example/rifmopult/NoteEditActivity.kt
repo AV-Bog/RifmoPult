@@ -1,3 +1,10 @@
+/*
+ * Rifmopult – поэтический редактор с подбором рифм
+ * Copyright (c) 2025 Arina Viktorovna Bogdanova
+ *
+ * MIT License
+ */
+
 package com.example.rifmopult
 
 import android.annotation.SuppressLint

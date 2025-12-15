@@ -1,3 +1,10 @@
+/*
+ * Rifmopult – поэтический редактор с подбором рифм
+ * Copyright (c) 2025 Arina Viktorovna Bogdanova
+ *
+ * MIT License
+ */
+
 package com.example.rifmopult
 
 import io.ktor.client.*
@@ -7,8 +14,6 @@ import org.jsoup.Jsoup
 import java.net.URLEncoder
 
 object RifmeNetParser {
-
-    private const val BASE_URL = "https://rifme.net/r/"
 
     suspend fun fetchRhymes(word: String, limit: Int = 100): List<String> {
         if (word.isBlank()) return emptyList()
