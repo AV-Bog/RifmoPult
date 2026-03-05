@@ -15,7 +15,11 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.text.Editable
+import android.text.SpannableStringBuilder
+import android.text.Spanned
 import android.text.TextWatcher
+import android.text.style.ForegroundColorSpan
+import android.text.style.RelativeSizeSpan
 import android.util.TypedValue
 import android.view.ActionMode
 import android.view.Gravity
@@ -68,6 +72,8 @@ class NoteEditActivity : AppCompatActivity() {
 
     private var hasUnsavedChanges = false
     private var originalState: NoteState? = null
+
+    private var isUpdatingText = false
 
     companion object {
         const val EXTRA_NOTE = "extra_note"
@@ -205,7 +211,7 @@ class NoteEditActivity : AppCompatActivity() {
 
     private fun saveCurrentNoteToDatabase() {
         val title = binding.titleEditText.text.toString().trim()
-        val cleanContent = binding.contentEditText.text.toString().trim()
+        val cleanContent = stripSyllableHints(binding.contentEditText.text.toString()).trim()
 
         if (isNewNote && title.isEmpty() && cleanContent.isEmpty()) {
             return
@@ -363,11 +369,17 @@ class NoteEditActivity : AppCompatActivity() {
 
         binding.contentEditText.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+            }
+
             override fun afterTextChanged(s: Editable?) {
-                val cleanText = s?.toString() ?: ""
-                val hintedText = addSyllableHintsForDisplay(cleanText)
-                binding.syllableOverlay.text = hintedText
+                val currentRawText = s?.toString() ?: ""
+                val cleanText = stripSyllableHints(currentRawText)
+                if (isUpdatingText) return
+                isUpdatingText = true
+                applySyllableSpansToEditText()
+                isUpdatingText = false
 
                 updateHistoryIfNeeded()
             }
@@ -405,12 +417,6 @@ class NoteEditActivity : AppCompatActivity() {
                 return false
             }
         })
-    }
-
-    private fun addSyllableHintsForDisplay(text: String): String {
-        return text.split('\n').joinToString("\n") { line ->
-            if (line.isBlank()) line else "$line ·${countSyllables(line)}"
-        }
     }
 
     private fun handleExitWithAutoSave() {
@@ -698,12 +704,6 @@ class NoteEditActivity : AppCompatActivity() {
 
     private val syllableHintRegex = """\s*·[0-9]+\s*$""".toRegex()
 
-    private fun stripSyllableHints(text: String): String {
-        return text.lines().joinToString("\n") { line ->
-            line.replace(syllableHintRegex, "")
-        }
-    }
-
     private fun addSyllableHints(text: String): String {
         return text.split('\n').joinToString("\n") { line ->
             val cleanLine = line.replace(syllableHintRegex, "")
@@ -714,5 +714,62 @@ class NoteEditActivity : AppCompatActivity() {
                 "$cleanLine ·$count"
             }
         }
+    }
+    private fun applySyllableSpansToEditText() {
+        val originalText = binding.contentEditText.text.toString()
+        val cleanText = stripSyllableHints(originalText)
+
+        val spannableBuilder = SpannableStringBuilder(cleanText)
+        val lines = cleanText.split('\n')
+
+        var charIndex = 0
+        var insertedOffset = 0
+
+        for (i in lines.indices) {
+            val line = lines[i]
+
+            if (line.isNotBlank()) {
+                val syllableCount = countSyllables(line)
+                val hint = " ·$syllableCount"
+
+                val hintStartIndex = charIndex + line.length + insertedOffset
+                val hintEndIndex = hintStartIndex + hint.length
+
+                spannableBuilder.insert(hintStartIndex, hint)
+
+                spannableBuilder.setSpan(
+                    ForegroundColorSpan(Color.parseColor("#999999")),
+                    hintStartIndex, hintEndIndex,
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+                spannableBuilder.setSpan(
+                    RelativeSizeSpan(0.7f),
+                    hintStartIndex, hintEndIndex,
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+
+                insertedOffset += hint.length
+            }
+
+            charIndex += line.length + 1
+        }
+
+        val selectionStart = binding.contentEditText.selectionStart
+        val selectionEnd = binding.contentEditText.selectionEnd
+
+        binding.contentEditText.setText(spannableBuilder, TextView.BufferType.SPANNABLE)
+
+        try {
+            val newStart = kotlin.math.min(selectionStart, spannableBuilder.length)
+            val newEnd = kotlin.math.min(selectionEnd, spannableBuilder.length)
+            binding.contentEditText.setSelection(newStart, newEnd)
+        } catch (e: Exception) {
+        }
+    }
+    private fun stripSyllableHints(text: String): String {
+        val syllableHintRegex = """\s*·[0-9]+\s*$""".toRegex()
+        return text.lines().joinToString("\n") { line ->
+            line.replace(syllableHintRegex, "")
+        }.removeSuffix("\n")
     }
 }

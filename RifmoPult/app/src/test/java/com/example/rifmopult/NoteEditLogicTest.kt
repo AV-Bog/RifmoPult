@@ -27,17 +27,6 @@ class NoteEditLogicTest {
         }
     }
 
-    private fun addSyllableHints(text: String): String {
-        return text.split('\n').joinToString("\n") { line ->
-            val cleanLine = line.replace(syllableHintRegex, "")
-            if (cleanLine.isBlank()) {
-                cleanLine
-            } else {
-                val count = countSyllables(cleanLine)
-                "$cleanLine ·$count"
-            }
-        }
-    }
 
     private fun Char.isPunctuation(): Boolean {
         return this in setOf(
@@ -78,12 +67,6 @@ class NoteEditLogicTest {
         assertEquals("Стих\nКонец", stripSyllableHints("Стих ·1\nКонец ·2"))
         assertEquals("Пусто\n\nТут", stripSyllableHints("Пусто ·1\n\nТут ·1"))
         assertEquals("Нет подсказок", stripSyllableHints("Нет подсказок"))
-    }
-
-    @Test
-    fun `addSyllableHints re-calculates even if hint already exists`() {
-        assertEquals("мир ·1", addSyllableHints("мир ·2"))
-        assertEquals("любовь ·2", addSyllableHints("любовь ·5"))
     }
 
     @Test

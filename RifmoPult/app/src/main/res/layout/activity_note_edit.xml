@@ -107,32 +107,22 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
-        <TextView
-            android:id="@+id/syllableOverlay"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:gravity="top|start"
-            android:padding="16dp"
-            android:textSize="16sp"
-            android:lineSpacingExtra="0dp"
-            android:textColor="#999999"
-            android:background="@null"
-            android:clickable="false"
-            android:focusable="false"
-            android:importantForAccessibility="no" />
-
         <EditText
             android:id="@+id/contentEditText"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:gravity="top|start"
-            android:inputType="textMultiLine"
+            android:inputType="textMultiLine|textNoSuggestions"
             android:background="@null"
             android:padding="16dp"
             android:textSize="16sp"
-            android:lineSpacingExtra="0dp"
             android:scrollbars="vertical"
-            android:hint="Начни писать" />
+            android:hint="Начни писать"
+            android:includeFontPadding="false"
+            android:breakStrategy="simple"
+            android:hyphenationFrequency="none"
+            android:lineSpacingExtra="0dp"
+            android:lineSpacingMultiplier="1"/>
 
     </FrameLayout>
 

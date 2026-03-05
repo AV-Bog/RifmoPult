@@ -7,6 +7,7 @@
 
 package com.example.rifmopult
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
@@ -15,13 +16,9 @@ import android.text.Editable
 import android.text.TextWatcher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.recyclerview.widget.GridLayoutManager
 import androidx.lifecycle.lifecycleScope
 import com.example.rifmopult.databinding.ActivityNotesBinding
 import kotlinx.coroutines.launch
-import java.util.Date
-import java.text.SimpleDateFormat
-import java.util.Locale
 
 class NotesActivity : AppCompatActivity() {
 
@@ -46,7 +43,6 @@ class NotesActivity : AppCompatActivity() {
 
         db = AppDatabase.getDatabase(this)
         noteDao = db.noteDao()
-
         setupRecyclerView()
         setupClickListeners()
         setupSearch()
@@ -103,6 +99,7 @@ class NotesActivity : AppCompatActivity() {
         })
     }
 
+    @SuppressLint("NotifyDataSetChanged")
     private fun filterNotes(query: String) {
         filteredNotes.clear()
         if (query.isEmpty()) {
@@ -121,6 +118,7 @@ class NotesActivity : AppCompatActivity() {
 
     private var isFirstLoad = true
 
+    @SuppressLint("NotifyDataSetChanged")
     private fun loadNotesFromDatabase() {
         lifecycleScope.launch {
             val notesFromDb = noteDao.getAllNotesSortedByDateDesc()
