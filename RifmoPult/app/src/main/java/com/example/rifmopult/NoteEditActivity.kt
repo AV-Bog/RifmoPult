@@ -715,57 +715,97 @@ class NoteEditActivity : AppCompatActivity() {
             }
         }
     }
+
+    private var previousLineCount = 0
+
     private fun applySyllableSpansToEditText() {
-        val originalText = binding.contentEditText.text.toString()
-        val cleanText = stripSyllableHints(originalText)
+        val editText = binding.contentEditText
+        val text = editText.text as? SpannableStringBuilder ?: run {
+            val spannable = SpannableStringBuilder(editText.text)
+            editText.setText(spannable, TextView.BufferType.SPANNABLE)
+            return
+        }
 
-        val spannableBuilder = SpannableStringBuilder(cleanText)
-        val lines = cleanText.split('\n')
+        val currentLineCount = text.count { it == '\n' }
+        val isEnterPressed = currentLineCount > previousLineCount
+        previousLineCount = currentLineCount
 
-        var charIndex = 0
-        var insertedOffset = 0
+        // Сохраняем курсор
+        val selectionStart = editText.selectionStart
+        val selectionEnd = editText.selectionEnd
+
+        // 1. Если был нажат Enter — перемещаем курсор перед подсказкой
+        if (isEnterPressed && selectionStart > 0) {
+            // Ищем позицию последнего '\n'
+            val lastNewLinePos = text.lastIndexOf('\n')
+            if (lastNewLinePos >= 0) {
+                // Ищем начало подсказки перед этим переносом
+                val beforeNewLine = text.substring(0, lastNewLinePos)
+                val hintMatch = """\s*·\d+\s*$""".toRegex().find(beforeNewLine)
+
+                if (hintMatch != null) {
+                    // Перемещаем курсор перед подсказкой
+                    val correctPosition = hintMatch.range.first
+                    editText.post {
+                        editText.setSelection(correctPosition)
+                    }
+                }
+            }
+        }
+
+        // 2. Удаляем старые подсказки
+        val oldColorSpans = text.getSpans(0, text.length, ForegroundColorSpan::class.java)
+        oldColorSpans.sortedByDescending { text.getSpanStart(it) }.forEach { span ->
+            val start = text.getSpanStart(span)
+            val end = text.getSpanEnd(span)
+            text.removeSpan(span)
+            if (start >= 0 && end <= text.length && start < end) {
+                text.delete(start, end)
+            }
+        }
+
+        // 3. Добавляем новые подсказки
+        val lines = text.toString().split('\n')
+        var offset = 0
 
         for (i in lines.indices) {
             val line = lines[i]
-
             if (line.isNotBlank()) {
                 val syllableCount = countSyllables(line)
                 val hint = " ·$syllableCount"
 
-                val hintStartIndex = charIndex + line.length + insertedOffset
-                val hintEndIndex = hintStartIndex + hint.length
+                val hintPosition = offset + line.length
+                text.insert(hintPosition, hint)
 
-                spannableBuilder.insert(hintStartIndex, hint)
-
-                spannableBuilder.setSpan(
+                text.setSpan(
                     ForegroundColorSpan(Color.parseColor("#999999")),
-                    hintStartIndex, hintEndIndex,
+                    hintPosition, hintPosition + hint.length,
                     Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
                 )
-                spannableBuilder.setSpan(
+                text.setSpan(
                     RelativeSizeSpan(0.7f),
-                    hintStartIndex, hintEndIndex,
+                    hintPosition, hintPosition + hint.length,
                     Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
                 )
 
-                insertedOffset += hint.length
+                offset += hint.length
             }
-
-            charIndex += line.length + 1
+            offset += line.length + 1
         }
 
-        val selectionStart = binding.contentEditText.selectionStart
-        val selectionEnd = binding.contentEditText.selectionEnd
-
-        binding.contentEditText.setText(spannableBuilder, TextView.BufferType.SPANNABLE)
-
-        try {
-            val newStart = kotlin.math.min(selectionStart, spannableBuilder.length)
-            val newEnd = kotlin.math.min(selectionEnd, spannableBuilder.length)
-            binding.contentEditText.setSelection(newStart, newEnd)
-        } catch (e: Exception) {
+        // 4. Восстанавливаем курсор (если не был перемещён выше)
+        if (!isEnterPressed) {
+            try {
+                editText.setSelection(
+                    kotlin.math.min(selectionStart, text.length),
+                    kotlin.math.min(selectionEnd, text.length)
+                )
+            } catch (e: Exception) {
+                // ignore
+            }
         }
     }
+
     private fun stripSyllableHints(text: String): String {
         val syllableHintRegex = """\s*·[0-9]+\s*$""".toRegex()
         return text.lines().joinToString("\n") { line ->

@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -16,6 +18,7 @@ android {
     }
     buildFeatures {
         viewBinding = true
+        buildConfig = true
     }
     buildTypes {
         release {
@@ -36,6 +39,7 @@ android {
     }
 }
 dependencies {
+    implementation("io.appmetrica.analytics:analytics:8.0.0")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
@@ -55,4 +59,17 @@ dependencies {
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
+}
+
+val localProperties = Properties()
+val localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localProperties.load(localPropertiesFile.inputStream())
+}
+val appMetricaApiKey = localProperties.getProperty("APPMETRICA_API_KEY") ?: ""
+
+android {
+    defaultConfig {
+        buildConfigField("String", "APPMETRICA_API_KEY", "\"$appMetricaApiKey\"")
+    }
 }

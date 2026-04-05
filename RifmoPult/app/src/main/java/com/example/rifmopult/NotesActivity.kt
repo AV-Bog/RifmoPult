@@ -41,6 +41,8 @@ class NotesActivity : AppCompatActivity() {
         binding = ActivityNotesBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        AnalyticsHelper.trackScreenOpen("NotesActivity")
+
         db = AppDatabase.getDatabase(this)
         noteDao = db.noteDao()
         setupRecyclerView()
@@ -56,7 +58,9 @@ class NotesActivity : AppCompatActivity() {
 
         notesAdapter = NotesAdapter(
             filteredNotes,
-            onItemClick = { note -> openNoteDetail(note) },
+            onItemClick = { note ->
+                AnalyticsHelper.trackNoteOpened(note.content.length)
+                openNoteDetail(note) },
             onItemLongClick = { note ->
                 showDeleteDialog(note)
                 true
@@ -68,8 +72,24 @@ class NotesActivity : AppCompatActivity() {
     private fun showDeleteDialog(note: Note) {
         AlertDialog.Builder(this)
             .setTitle("Удалить стих?")
-            .setMessage("Вы уверены, что хотите удалить «${note.title.ifEmpty { "Без названия" } }»?")
+            .setMessage("Вы уверены, что хотите удалить «${note.title.ifEmpty { "Без названия" }}»?")
             .setPositiveButton("Удалить") { _, _ ->
+                val noteAgeHours = try {
+                    val dateLong = note.date.toLongOrNull()
+                    if (dateLong != null) {
+                        (System.currentTimeMillis() - dateLong) / (1000 * 60 * 60)
+                    } else {
+                        0L
+                    }
+                } catch (e: Exception) {
+                    0L
+                }
+
+                AnalyticsHelper.trackNoteDeleted(
+                    noteLength = note.content.length,
+                    noteAgeHours = noteAgeHours
+                )
+
                 lifecycleScope.launch {
                     noteDao.deleteNote(note.toEntity())
                     loadNotesFromDatabase()
@@ -81,10 +101,12 @@ class NotesActivity : AppCompatActivity() {
 
     private fun setupClickListeners() {
         binding.fabAddNote.setOnClickListener {
+            AnalyticsHelper.trackButtonClick("fab_add_note")
             createNewNote()
         }
 
         binding.btnSettings.setOnClickListener {
+            AnalyticsHelper.trackButtonClick("btn_settings")
             startActivity(Intent(this, SettingsActivity::class.java))
         }
     }
@@ -112,9 +134,18 @@ class NotesActivity : AppCompatActivity() {
                     filteredNotes.add(note)
                 }
             }
+
+            if (query.isNotBlank()) {
+                AnalyticsHelper.trackSearchPerformed(
+                    queryLength = query.length,
+                    resultsCount = filteredNotes.size
+                )
+            }
         }
         notesAdapter.notifyDataSetChanged()
     }
+
+
 
     private var isFirstLoad = true
 
@@ -136,6 +167,8 @@ class NotesActivity : AppCompatActivity() {
     }
 
     private fun createNewNote() {
+        AnalyticsHelper.trackEvent("note_creation_started")
+
         val intent = Intent(this, NoteEditActivity::class.java)
         noteEditLauncher.launch(intent)
     }
@@ -171,9 +204,9 @@ class NotesActivity : AppCompatActivity() {
         }
     }
     private fun stripSyllableHints(text: String): String {
-        val syllableHintRegex = """\s*\([0-9]+\)\s*$""".toRegex()
-        return text.lines().joinToString("\n") { line ->
-            line.replace(syllableHintRegex, "")
-        }
+        val syllableHintRegex = """\s*·[0-9]+\s*$""".toRegex()
+        return text.lines()
+            .map { it.replace(syllableHintRegex, "") }
+            .joinToString("\n")
     }
 }
