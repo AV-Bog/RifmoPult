@@ -283,7 +283,10 @@ class NoteEditActivity : AppCompatActivity() {
             binding.noteDateTextView.text = "Изменено: $displayDate"
         }
 
+        isUpdatingText = true
         binding.contentEditText.setText(initialState.content)
+        previousLineCount = initialState.content.count { it == '\n' }
+        isUpdatingText = false
 
         binding.btnUndo.visibility = View.GONE
         binding.btnRedo.visibility = View.GONE
@@ -359,10 +362,28 @@ class NoteEditActivity : AppCompatActivity() {
             }
         }
 
-        binding.titleEditText.addTextChangedListener(object : TextWatcher {
+        binding.contentEditText.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+            }
+
             override fun afterTextChanged(s: Editable?) {
+                if (isUpdatingText) return
+
+                val currentRawText = s?.toString() ?: ""
+
+                // Проверяем, есть ли уже подсказки
+                val hasHints = currentRawText.contains("·")
+                if (hasHints) {
+                    // Если подсказки уже есть — не применяем повторно
+                    return
+                }
+
+                isUpdatingText = true
+                applySyllableSpansToEditText()
+                isUpdatingText = false
+
                 updateHistoryIfNeeded()
             }
         })
@@ -715,7 +736,6 @@ class NoteEditActivity : AppCompatActivity() {
             }
         }
     }
-
     private var previousLineCount = 0
 
     private fun applySyllableSpansToEditText() {
@@ -728,6 +748,9 @@ class NoteEditActivity : AppCompatActivity() {
 
         val currentLineCount = text.count { it == '\n' }
         val isEnterPressed = currentLineCount > previousLineCount
+        val isLineDeleted = currentLineCount < previousLineCount
+
+        // Обновляем счетчик
         previousLineCount = currentLineCount
 
         // Сохраняем курсор
@@ -736,24 +759,22 @@ class NoteEditActivity : AppCompatActivity() {
 
         // 1. Если был нажат Enter — перемещаем курсор перед подсказкой
         if (isEnterPressed && selectionStart > 0) {
-            // Ищем позицию последнего '\n'
-            val lastNewLinePos = text.lastIndexOf('\n')
+            val lastNewLinePos = text.lastIndexOf('\n', selectionStart - 1)
             if (lastNewLinePos >= 0) {
-                // Ищем начало подсказки перед этим переносом
                 val beforeNewLine = text.substring(0, lastNewLinePos)
                 val hintMatch = """\s*·\d+\s*$""".toRegex().find(beforeNewLine)
 
                 if (hintMatch != null) {
-                    // Перемещаем курсор перед подсказкой
                     val correctPosition = hintMatch.range.first
                     editText.post {
                         editText.setSelection(correctPosition)
                     }
+                    return // Выходим, чтобы не применять спаны сейчас
                 }
             }
         }
 
-        // 2. Удаляем старые подсказки
+        // 2. Удаляем старые подсказки (в обратном порядке!)
         val oldColorSpans = text.getSpans(0, text.length, ForegroundColorSpan::class.java)
         oldColorSpans.sortedByDescending { text.getSpanStart(it) }.forEach { span ->
             val start = text.getSpanStart(span)
@@ -793,8 +814,8 @@ class NoteEditActivity : AppCompatActivity() {
             offset += line.length + 1
         }
 
-        // 4. Восстанавливаем курсор (если не был перемещён выше)
-        if (!isEnterPressed) {
+        // 4. Восстанавливаем курсор (только если не Enter)
+        if (!isEnterPressed && !isLineDeleted) {
             try {
                 editText.setSelection(
                     kotlin.math.min(selectionStart, text.length),
