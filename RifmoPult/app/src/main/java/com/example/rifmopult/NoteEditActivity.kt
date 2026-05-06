@@ -429,6 +429,7 @@ class NoteEditActivity : AppCompatActivity() {
                             kotlin.math.max(start, end)
                         ).trim()
                         if (word.isNotEmpty()) {
+                            AnalyticsHelper.trackButtonClick("context_menu_rhyme_search")
                             showRhymePanel(word)
                         }
                     }
@@ -712,6 +713,13 @@ class NoteEditActivity : AppCompatActivity() {
             val toInsert = if (needsSpace) " $word" else word
             text.insert(cursorPos, toInsert)
             editText.setSelection(cursorPos + toInsert.length)
+
+            AnalyticsHelper.trackRhymeSearch(
+                word = selectedWord,           // слово, к которому искали рифму
+                resultsCount = 1,              // вставили 1 слово
+                durationMs = 0L,               // опционально: засечь время
+                success = true
+            )
         }
 
         draggedRhyme = null
