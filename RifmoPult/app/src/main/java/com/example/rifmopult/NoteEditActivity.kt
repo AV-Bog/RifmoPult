@@ -512,6 +512,7 @@ class NoteEditActivity : AppCompatActivity() {
     @SuppressLint("ClickableViewAccessibility", "InflateParams", "SetTextI18n")
 
     private fun showRhymePanel(word: String) {
+        android.util.Log.d("RhymeDebug", "showRhymePanel called with word: $word")
         selectedWord = word
 
         val popupView = LayoutInflater.from(this).inflate(R.layout.popup_rhyme_panel, null)
@@ -540,7 +541,9 @@ class NoteEditActivity : AppCompatActivity() {
         container.addView(loadingView)
 
         lifecycleScope.launch {
+            android.util.Log.d("RhymeDebug", "Coroutine started")
             val rhymes = RifmeNetParser.fetchRhymes(word)
+            android.util.Log.d("RhymeDebug", "Got ${rhymes.size} rhymes")
             container.removeAllViews()
 
             if (rhymes.isEmpty()) {
@@ -715,9 +718,9 @@ class NoteEditActivity : AppCompatActivity() {
             editText.setSelection(cursorPos + toInsert.length)
 
             AnalyticsHelper.trackRhymeSearch(
-                word = selectedWord,           // слово, к которому искали рифму
-                resultsCount = 1,              // вставили 1 слово
-                durationMs = 0L,               // опционально: засечь время
+                word = selectedWord,
+                resultsCount = 1,
+                durationMs = 0L,
                 success = true
             )
         }

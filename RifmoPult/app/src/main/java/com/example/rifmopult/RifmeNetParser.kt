@@ -7,98 +7,102 @@
 
 package com.example.rifmopult
 
-import com.example.rifmopult.AnalyticsHelper.trackError
-import com.example.rifmopult.AnalyticsHelper.trackRhymeSearch
+import android.util.Log
 import io.appmetrica.analytics.AppMetrica
 import io.ktor.client.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
+import io.ktor.util.InternalAPI
+import kotlinx.coroutines.delay
 import org.json.JSONObject
-import org.jsoup.Jsoup
 import java.net.URLEncoder
 
 object RifmeNetParser {
+
+    private const val TAG = "RifmovkaParser"
+
+    private var lastRequestTime = 0L
+    private const val MIN_REQUEST_INTERVAL_MS = 3000L
+
+    @OptIn(InternalAPI::class)
     suspend fun fetchRhymes(word: String, limit: Int = 100): List<String> {
         if (word.isBlank()) return emptyList()
 
+        val now = System.currentTimeMillis()
+        val timeSinceLastRequest = now - lastRequestTime
+        if (timeSinceLastRequest < MIN_REQUEST_INTERVAL_MS) {
+            delay(MIN_REQUEST_INTERVAL_MS - timeSinceLastRequest)
+        }
+        lastRequestTime = System.currentTimeMillis()
+
         val startTime = System.currentTimeMillis()
         val client = HttpClient()
+
         return try {
-            val encodedWord = URLEncoder.encode(word.trim().lowercase(), "UTF-8")
-            val url = "https://rifme.net/r/$encodedWord"
+            val encodedWord = URLEncoder.encode(word.trim(), "UTF-8")
+            val url = "https://rifmovka.ru/rifma/$encodedWord#similar"
 
-            val html = client.get(url) {
-                header("User-Agent", "Mozilla/5.0 (Android) AppleWebKit/537.36")
-            }.bodyAsText()
-
-            val doc = Jsoup.parse(html)
-            val result = mutableListOf<String>()
-
-            doc.select("#tochnye li[data-w]").forEach { element ->
-                val rhyme = element.attr("data-w").trim()
-                if (isValidRhyme(rhyme, word)) {
-                    result.add(rhyme)
-                    if (result.size >= limit) return@forEach
-                }
+            val response = client.get(url) {
+                header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                header("Accept-Language", "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7")
+                header("Referer", "https://rifmovka.ru/")
             }
 
-            if (result.size < limit) {
-                doc.select("#meneestrogie li[data-w]").forEach { element ->
-                    val rhyme = element.attr("data-w").trim()
-                    if (isValidRhyme(rhyme, word)) {
-                        result.add(rhyme)
-                        if (result.size >= limit) return@forEach
-                    }
-                }
-            }
+            val html = response.bodyAsText()
+            val result = parseRhymes(html, limit)
 
             val durationMs = System.currentTimeMillis() - startTime
-            trackRhymeSearch(word, result.size, durationMs, success = true)
+            Log.d(TAG, "Found ${result.size} rhymes in ${durationMs}ms")
 
+            trackRhymeSearch(word, result.size, durationMs, success = result.isNotEmpty())
             result
+
         } catch (e: Exception) {
-            e.printStackTrace()
-
-            val durationMs = System.currentTimeMillis() - startTime
-
-            trackRhymeSearch(word, 0, durationMs, success = false)
-            trackError("rhyme_search", e.message ?: "Unknown error")
-
+            Log.e(TAG, "Error: ${e.message}")
+            trackRhymeSearch(word, 0, System.currentTimeMillis() - startTime, success = false)
             emptyList()
         } finally {
             client.close()
         }
     }
 
-    private fun isValidRhyme(rhyme: String, originalWord: String): Boolean {
-        return rhyme.isNotEmpty() &&
-                rhyme != originalWord &&
-                !rhyme.contains("://") &&
-                rhyme.all { it.isLetter() || it == '-' || it == '\'' }
+    private fun parseRhymes(html: String, limit: Int): List<String> {
+        val rhymes = mutableSetOf<String>()
+
+        val simPageStart = html.indexOf("id=\"typeSimPage\"")
+        if (simPageStart != -1) {
+            val simPageEnd = html.indexOf("<div class=\"page\" id=\"typeIntPage\"", simPageStart)
+            val simPageHtml = html.substring(simPageStart, if (simPageEnd == -1) html.length else simPageEnd)
+
+            val liRegex = Regex("""<li[^>]*class="[^"]*vis[^"]*"[^>]*>([^<]+(?:<[^>]+>[^<]*</[^>]+>)*[^<]*)</li>""", RegexOption.IGNORE_CASE)
+
+            for (match in liRegex.findAll(simPageHtml)) {
+                val wordHtml = match.groupValues[1]
+                    .replace(Regex("""<[^>]+>"""), "")
+                    .trim()
+
+                if (wordHtml.isNotEmpty() &&
+                    wordHtml.length >= 3 &&
+                    wordHtml.matches(Regex("""[а-яё\-]+"""))) {
+                    rhymes.add(wordHtml)
+                }
+            }
+        }
+
+        return rhymes.take(limit).toList()
     }
 
     private fun trackRhymeSearch(word: String, resultsCount: Int, durationMs: Long, success: Boolean) {
-        val wordLength = word.length
-        val firstLetter = if (word.isNotEmpty()) word.first().toString() else ""
-
         val data = JSONObject().apply {
-            put("word_length", wordLength)
-            put("first_letter", firstLetter)
+            put("word", word)
             put("results_count", resultsCount)
             put("duration_ms", durationMs)
             put("success", success)
-        }.toString()
+            put("source", "rifmovka.ru")
+        }
 
         val eventName = if (success) "rhyme_search_success" else "rhyme_search_failed"
-        AppMetrica.reportEvent(eventName, data)
-    }
-
-    private fun trackError(errorType: String, message: String) {
-        val data = JSONObject().apply {
-            put("error_type", errorType)
-            put("message", message.take(200))
-        }.toString()
-
-        AppMetrica.reportEvent("app_error", data)
+        AppMetrica.reportEvent(eventName, data.toString())
     }
 }
