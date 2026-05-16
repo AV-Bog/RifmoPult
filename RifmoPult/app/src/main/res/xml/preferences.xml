@@ -2,6 +2,10 @@
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
     <SwitchPreferenceCompat
         android:key="enable_syllable_panel"
-        android:title="Показывать подсчет слогов"
+        android:title="Подсчёт слогов"
+        android:defaultValue="false" />
+    <SwitchPreferenceCompat
+        android:key="enable_rhyme_scheme"
+        android:title="Схема рифмовки"
         android:defaultValue="false" />
 </PreferenceScreen>

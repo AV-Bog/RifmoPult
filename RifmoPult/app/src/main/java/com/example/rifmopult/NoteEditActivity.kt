@@ -11,6 +11,8 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.drawable.ShapeDrawable
+import android.graphics.drawable.shapes.OvalShape
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -19,6 +21,7 @@ import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.TextWatcher
 import android.text.style.ForegroundColorSpan
+import android.text.style.ImageSpan
 import android.text.style.RelativeSizeSpan
 import android.util.TypedValue
 import android.view.ActionMode
@@ -43,10 +46,6 @@ import java.util.*
 import androidx.core.graphics.drawable.toDrawable
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
-
-fun Editable.insert(position: Int, text: String) {
-    replace(position, position, text)
-}
 
 class NoteEditActivity : AppCompatActivity() {
 
@@ -381,8 +380,8 @@ class NoteEditActivity : AppCompatActivity() {
 
                 val currentRawText = s?.toString() ?: ""
 
-                // а надо ли подсказки вообще
-                if (!isSyllableHintsEnabled()) return
+                // а надо ли подсказки (обе) вообще
+                if (!isSyllableHintsEnabled() && !isRhymeSchemeEnabled()) return
 
                 // Проверяем, есть ли уже подсказки
                 val hasHints = currentRawText.contains("·")
@@ -408,7 +407,7 @@ class NoteEditActivity : AppCompatActivity() {
             override fun afterTextChanged(s: Editable?) {
                 if (isUpdatingText) return
 
-                if (isSyllableHintsEnabled()) {
+                if (isSyllableHintsEnabled() || isRhymeSchemeEnabled()) {
                     isUpdatingText = true
                     applySyllableSpansToEditText()
                     isUpdatingText = false
@@ -772,11 +771,8 @@ class NoteEditActivity : AppCompatActivity() {
         val currentLineCount = text.count { it == '\n' }
         val isEnterPressed = currentLineCount > previousLineCount
         val isLineDeleted = currentLineCount < previousLineCount
-
-        // Обновляем счетчик
         previousLineCount = currentLineCount
 
-        // Сохраняем курсор
         val selectionStart = editText.selectionStart
         val selectionEnd = editText.selectionEnd
 
@@ -786,18 +782,15 @@ class NoteEditActivity : AppCompatActivity() {
             if (lastNewLinePos >= 0) {
                 val beforeNewLine = text.substring(0, lastNewLinePos)
                 val hintMatch = """\s*·\d+\s*$""".toRegex().find(beforeNewLine)
-
                 if (hintMatch != null) {
                     val correctPosition = hintMatch.range.first
-                    editText.post {
-                        editText.setSelection(correctPosition)
-                    }
-                    return // Выходим, чтобы не применять спаны сейчас
+                    editText.post { editText.setSelection(correctPosition) }
+                    return
                 }
             }
         }
 
-        // 2. Удаляем старые подсказки (в обратном порядке!)
+        // 2. Удаляем старые спаны и вставленный текст подсказок
         val oldColorSpans = text.getSpans(0, text.length, ForegroundColorSpan::class.java)
         oldColorSpans.sortedByDescending { text.getSpanStart(it) }.forEach { span ->
             val start = text.getSpanStart(span)
@@ -807,58 +800,124 @@ class NoteEditActivity : AppCompatActivity() {
                 text.delete(start, end)
             }
         }
+        // Удаляем старые кружки (ImageSpan)
+        val oldImageSpans = text.getSpans(0, text.length, ImageSpan::class.java)
+        oldImageSpans.sortedByDescending { text.getSpanStart(it) }.forEach { span ->
+            val start = text.getSpanStart(span)
+            val end = text.getSpanEnd(span)
+            text.removeSpan(span)
+            if (start >= 0 && end <= text.length && start < end) {
+                text.delete(start, end)
+            }
+        }
 
-        // 3. Добавляем новые подсказки
-        val lines = text.toString().split('\n')
+        // 3. Получаем чистые строки для анализа схемы рифм
+        val cleanLines = text.toString().split('\n')
+        val rhymeColors: List<Int?> = if (isRhymeSchemeEnabled()) {
+            RhymeSchemeAnalyzer.analyze(cleanLines)
+        } else {
+            List(cleanLines.size) { null }
+        }
+
+        // 4. Вставляем новые подсказки
+        val syllableEnabled = isSyllableHintsEnabled()
         var offset = 0
 
-        for (i in lines.indices) {
-            val line = lines[i]
+        for (i in cleanLines.indices) {
+            val line = cleanLines[i]
+
             if (line.isNotBlank()) {
-                val syllableCount = countSyllables(line)
-                val hint = " ·$syllableCount"
+                var hint = ""
 
-                val hintPosition = offset + line.length
-                text.insert(hintPosition, hint)
+                if (syllableEnabled) {
+                    val syllableCount = countSyllables(line)
+                    hint += " ·$syllableCount"
+                }
 
-                text.setSpan(
-                    ForegroundColorSpan(Color.parseColor("#999999")),
-                    hintPosition, hintPosition + hint.length,
-                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-                text.setSpan(
-                    RelativeSizeSpan(0.7f),
-                    hintPosition, hintPosition + hint.length,
-                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
+                // Кружок рифмы добавляем как placeholder-символ " ●"
+                val rhymeColor = rhymeColors.getOrNull(i)
+                val addCircle = isRhymeSchemeEnabled() && rhymeColor != null
 
-                offset += hint.length
+                if (hint.isNotEmpty() || addCircle) {
+                    val hintPosition = offset + line.length
+
+                    if (hint.isNotEmpty()) {
+                        text.insert(hintPosition, hint)
+                        text.setSpan(
+                            ForegroundColorSpan(Color.parseColor("#999999")),
+                            hintPosition, hintPosition + hint.length,
+                            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                        )
+                        text.setSpan(
+                            RelativeSizeSpan(0.7f),
+                            hintPosition, hintPosition + hint.length,
+                            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                        )
+                        offset += hint.length
+                    }
+
+                    if (addCircle) {
+                        val circlePosition = offset + hintPosition - (if (hint.isNotEmpty()) 0 else 0) + hint.length
+                        val circlePlaceholder = " ●"
+                        text.insert(hintPosition + hint.length, circlePlaceholder)
+
+                        // Рисуем кружок нужного цвета
+                        val circleSizePx = (editText.textSize * 0.6f).toInt()
+                        val circleDrawable = ShapeDrawable(OvalShape()).apply {
+                            paint.color = rhymeColor!!
+                            intrinsicWidth = circleSizePx
+                            intrinsicHeight = circleSizePx
+                            setBounds(0, 0, circleSizePx, circleSizePx)
+                        }
+
+                        // Спан на символ "●" (второй символ в " ●", то есть +1)
+                        val circleStart = hintPosition + hint.length + 1
+                        val circleEnd = circleStart + 1
+                        text.setSpan(
+                            ImageSpan(circleDrawable, ImageSpan.ALIGN_BASELINE),
+                            circleStart, circleEnd,
+                            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                        )
+                        text.setSpan(
+                            ForegroundColorSpan(Color.TRANSPARENT),
+                            hintPosition + hint.length, hintPosition + hint.length + circlePlaceholder.length,
+                            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                        )
+
+                        offset += circlePlaceholder.length
+                    }
+                }
             }
+
             offset += line.length + 1
         }
 
-        // 4. Восстанавливаем курсор (только если не Enter)
+        // 5. Восстанавливаем курсор
         if (!isEnterPressed && !isLineDeleted) {
             try {
                 editText.setSelection(
                     kotlin.math.min(selectionStart, text.length),
                     kotlin.math.min(selectionEnd, text.length)
                 )
-            } catch (e: Exception) {
-                // ignore
-            }
+            } catch (e: Exception) { }
         }
     }
 
     private fun stripSyllableHints(text: String): String {
-        val syllableHintRegex = """\s*·[0-9]+\s*$""".toRegex()
+        val hintRegex = """\s*·[0-9]+\s*(●)?\s*$""".toRegex()
+        val circleOnlyRegex = """\s*●\s*$""".toRegex()
         return text.lines().joinToString("\n") { line ->
-            line.replace(syllableHintRegex, "")
+            line.replace(hintRegex, "").replace(circleOnlyRegex, "")
         }.removeSuffix("\n")
     }
 
     private fun isSyllableHintsEnabled(): Boolean {
         val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
         return prefs.getBoolean("enable_syllable_panel", false)
+    }
+
+    private fun isRhymeSchemeEnabled(): Boolean {
+        val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+        return prefs.getBoolean("enable_rhyme_scheme", false)
     }
 }
