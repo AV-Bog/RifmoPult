@@ -293,6 +293,14 @@ class NoteEditActivity : AppCompatActivity() {
 
         hasUnsavedChanges = false
         updateSaveButton()
+
+        // на случай если старое кол-во слогов осталось по каким-то причинам
+        if (!isSyllableHintsEnabled()) {
+            val cleanContent = stripSyllableHints(binding.contentEditText.text.toString())
+            isUpdatingText = true
+            binding.contentEditText.setText(cleanContent)
+            isUpdatingText = false
+        }
     }
 
     private fun updateSaveButton() {
@@ -373,6 +381,9 @@ class NoteEditActivity : AppCompatActivity() {
 
                 val currentRawText = s?.toString() ?: ""
 
+                // а надо ли подсказки вообще
+                if (!isSyllableHintsEnabled()) return
+
                 // Проверяем, есть ли уже подсказки
                 val hasHints = currentRawText.contains("·")
                 if (hasHints) {
@@ -395,12 +406,13 @@ class NoteEditActivity : AppCompatActivity() {
             }
 
             override fun afterTextChanged(s: Editable?) {
-                val currentRawText = s?.toString() ?: ""
-                val cleanText = stripSyllableHints(currentRawText)
                 if (isUpdatingText) return
-                isUpdatingText = true
-                applySyllableSpansToEditText()
-                isUpdatingText = false
+
+                if (isSyllableHintsEnabled()) {
+                    isUpdatingText = true
+                    applySyllableSpansToEditText()
+                    isUpdatingText = false
+                }
 
                 updateHistoryIfNeeded()
             }
@@ -843,5 +855,10 @@ class NoteEditActivity : AppCompatActivity() {
         return text.lines().joinToString("\n") { line ->
             line.replace(syllableHintRegex, "")
         }.removeSuffix("\n")
+    }
+
+    private fun isSyllableHintsEnabled(): Boolean {
+        val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+        return prefs.getBoolean("enable_syllable_panel", false)
     }
 }
