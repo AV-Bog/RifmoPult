@@ -45,7 +45,10 @@ import android.widget.*
 import java.util.*
 import androidx.core.graphics.drawable.toDrawable
 import androidx.lifecycle.lifecycleScope
+import com.example.rifmopult.StressAccentuator.countVowels
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import androidx.core.graphics.toColorInt
 
 class NoteEditActivity : AppCompatActivity() {
 
@@ -114,6 +117,8 @@ class NoteEditActivity : AppCompatActivity() {
 
         val db = AppDatabase.getDatabase(this)
         noteDao = db.noteDao()
+
+        StressAccentuator.init(this)
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -301,6 +306,9 @@ class NoteEditActivity : AppCompatActivity() {
             isUpdatingText = false
         }
     }
+
+    private val stressDebounceHandler = Handler(Looper.getMainLooper())
+    private var stressDebounceRunnable: Runnable? = null
 
     private fun updateSaveButton() {
         val color = if (hasUnsavedChanges) {
@@ -800,7 +808,7 @@ class NoteEditActivity : AppCompatActivity() {
                 text.delete(start, end)
             }
         }
-        // Удаляем старые кружки (ImageSpan)
+
         val oldImageSpans = text.getSpans(0, text.length, ImageSpan::class.java)
         oldImageSpans.sortedByDescending { text.getSpanStart(it) }.forEach { span ->
             val start = text.getSpanStart(span)
@@ -811,6 +819,10 @@ class NoteEditActivity : AppCompatActivity() {
             }
         }
 
+        // Удаляем старые спаны ударений
+        val oldStyleSpans = text.getSpans(0, text.length, android.text.style.StyleSpan::class.java)
+        oldStyleSpans.forEach { text.removeSpan(it) }
+
         // 3. Получаем чистые строки для анализа схемы рифм
         val cleanLines = text.toString().split('\n')
         val rhymeColors: List<Int?> = if (isRhymeSchemeEnabled()) {
@@ -819,7 +831,35 @@ class NoteEditActivity : AppCompatActivity() {
             List(cleanLines.size) { null }
         }
 
-        // 4. Вставляем новые подсказки
+        // 4. Фоновая загрузка ударений для новых слов
+        val stressEnabled = isStressEnabled()
+        if (stressEnabled) {
+            stressDebounceRunnable?.let { stressDebounceHandler.removeCallbacks(it) }
+            stressDebounceRunnable = Runnable {
+                lifecycleScope.launch {
+                    var hasNewStress = false
+                    for (line in cleanLines) {
+                        if (line.isBlank()) continue
+                        for (word in line.split(" ")) {
+                            val letters = word.filter { it.isLetter() }.lowercase()
+                            if (letters.isEmpty() || countVowels(letters) <= 1) continue
+                            if (StressAccentuator.getFromCache(letters) == null) {
+                                val stressed = StressAccentuator.getStressed(letters)
+                                if (stressed != null) hasNewStress = true
+                            }
+                        }
+                    }
+                    if (hasNewStress && !isUpdatingText) {
+                        isUpdatingText = true
+                        applySyllableSpansToEditText()
+                        isUpdatingText = false
+                    }
+                }
+            }
+            stressDebounceHandler.postDelayed(stressDebounceRunnable!!, 1500L)
+        }
+
+        // 5. Вставляем подсказки и спаны
         val syllableEnabled = isSyllableHintsEnabled()
         var offset = 0
 
@@ -827,14 +867,43 @@ class NoteEditActivity : AppCompatActivity() {
             val line = cleanLines[i]
 
             if (line.isNotBlank()) {
-                var hint = ""
 
+                // 5.1 Ударения — жирный на ударную гласную (только из кэша, синхронно)
+                if (stressEnabled) {
+                    var pos = 0
+                    while (pos < line.length) {
+                        if (!line[pos].isLetter()) { pos++; continue }
+                        val wordStart = pos
+                        while (pos < line.length && line[pos].isLetter()) pos++
+                        val wordEnd = pos
+                        val letters = line.substring(wordStart, wordEnd).lowercase()
+                        if (countVowels(letters) > 1) {
+                            val stressed = StressAccentuator.getFromCache(letters)
+                                ?: if ('ё' in letters) StressAccentuator.getStressedSync(letters) else null
+                            if (stressed != null) {
+                                val acutePos = stressed.indexOf('\u0301')
+                                if (acutePos > 0) {
+                                    val absPos = offset + wordStart + (acutePos - 1)
+                                    if (absPos >= 0 && absPos < text.length) {
+                                        text.setSpan(
+                                            android.text.style.StyleSpan(android.graphics.Typeface.BOLD),
+                                            absPos, absPos + 1,
+                                            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 5.2 Подсказка слогов и кружок рифмы
+                var hint = ""
                 if (syllableEnabled) {
                     val syllableCount = countSyllables(line)
                     hint += " ·$syllableCount"
                 }
 
-                // Кружок рифмы добавляем как placeholder-символ " ●"
                 val rhymeColor = rhymeColors.getOrNull(i)
                 val addCircle = isRhymeSchemeEnabled() && rhymeColor != null
 
@@ -844,7 +913,7 @@ class NoteEditActivity : AppCompatActivity() {
                     if (hint.isNotEmpty()) {
                         text.insert(hintPosition, hint)
                         text.setSpan(
-                            ForegroundColorSpan(Color.parseColor("#999999")),
+                            ForegroundColorSpan("#999999".toColorInt()),
                             hintPosition, hintPosition + hint.length,
                             Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
                         )
@@ -857,20 +926,17 @@ class NoteEditActivity : AppCompatActivity() {
                     }
 
                     if (addCircle) {
-                        val circlePosition = offset + hintPosition - (if (hint.isNotEmpty()) 0 else 0) + hint.length
                         val circlePlaceholder = " ●"
                         text.insert(hintPosition + hint.length, circlePlaceholder)
 
-                        // Рисуем кружок нужного цвета
                         val circleSizePx = (editText.textSize * 0.6f).toInt()
                         val circleDrawable = ShapeDrawable(OvalShape()).apply {
-                            paint.color = rhymeColor!!
+                            paint.color = rhymeColor
                             intrinsicWidth = circleSizePx
                             intrinsicHeight = circleSizePx
                             setBounds(0, 0, circleSizePx, circleSizePx)
                         }
 
-                        // Спан на символ "●" (второй символ в " ●", то есть +1)
                         val circleStart = hintPosition + hint.length + 1
                         val circleEnd = circleStart + 1
                         text.setSpan(
@@ -880,7 +946,8 @@ class NoteEditActivity : AppCompatActivity() {
                         )
                         text.setSpan(
                             ForegroundColorSpan(Color.TRANSPARENT),
-                            hintPosition + hint.length, hintPosition + hint.length + circlePlaceholder.length,
+                            hintPosition + hint.length,
+                            hintPosition + hint.length + circlePlaceholder.length,
                             Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
                         )
 
@@ -892,7 +959,7 @@ class NoteEditActivity : AppCompatActivity() {
             offset += line.length + 1
         }
 
-        // 5. Восстанавливаем курсор
+        // 6. Восстанавливаем курсор
         if (!isEnterPressed && !isLineDeleted) {
             try {
                 editText.setSelection(
@@ -919,5 +986,10 @@ class NoteEditActivity : AppCompatActivity() {
     private fun isRhymeSchemeEnabled(): Boolean {
         val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
         return prefs.getBoolean("enable_rhyme_scheme", false)
+    }
+
+    private fun isStressEnabled(): Boolean {
+        val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+        return prefs.getBoolean("enable_stress", false)
     }
 }

@@ -8,4 +8,8 @@
         android:key="enable_rhyme_scheme"
         android:title="Схема рифмовки"
         android:defaultValue="false" />
+    <SwitchPreferenceCompat
+        android:key="enable_stress"
+        android:title="Ударения"
+        android:defaultValue="false" />
 </PreferenceScreen>
