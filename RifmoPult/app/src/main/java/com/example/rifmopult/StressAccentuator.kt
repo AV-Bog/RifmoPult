@@ -27,17 +27,28 @@ object StressAccentuator {
     }
 
     suspend fun getStressed(word: String): String? {
+        android.util.Log.e("StressDebug", "word='$word' vowels=${countVowels(word.lowercase())} chars=${word.map{it.code}}")
+        android.util.Log.d("StressDebug", "Word bytes: ${word.map { it.code }}")
         val lower = word.lowercase()
 
-        // Быстрые случаи
         if ('ё' in lower) return applyStressToYo(word)
-        if (countVowels(lower) <= 1) return word
 
-        // Проверка кэша (кэшируем уже с правильным регистром)
-        getFromCache(word)?.let { return it }
-        getFromCache(lower)?.let { return restoreCase(word, it) }
+        val vowelCount = countVowels(lower)
+        if (vowelCount == 0) return word
+        if (vowelCount == 1) return placeStressOnOnlyVowel(word)
 
-        // Запрос к API
+        // Проверка кэша ТОЛЬКО для многосложных
+        getFromCache(word)?.let {
+            android.util.Log.d("StressDebug", "From cache: $it")
+            return it
+        }
+        getFromCache(lower)?.let {
+            val restored = restoreCase(word, it)
+            android.util.Log.d("StressDebug", "From cache (lower): $restored")
+            return restored
+        }
+
+        // Запрос к API для многосложных
         return requestMutex.withLock {
             getFromCache(word)?.let { return@withLock it }
             getFromCache(lower)?.let { return@withLock restoreCase(word, it) }
@@ -45,12 +56,51 @@ object StressAccentuator {
             val fromApi = fetchFromWiktionary(lower)
             if (fromApi != null) {
                 val withCase = restoreCase(word, fromApi)
-                saveToCache(word, withCase)  // Сохраняем с оригинальным регистром
-                saveToCache(lower, fromApi)  // И в lowercase для быстрого поиска
+                saveToCache(word, withCase)
+                saveToCache(lower, fromApi)
                 withCase
-            } else null
+            } else {
+                // Фоллбэк для многосложных
+                val fallback = applyFallbackStress(lower)
+                if (fallback != null) {
+                    saveToCache(lower, fallback)
+                    val withCase = restoreCase(word, fallback)
+                    saveToCache(word, withCase)
+                    withCase
+                } else {
+                    word
+                }
+            }
         }
     }
+
+    private fun placeStressOnOnlyVowel(word: String): String {
+        val vowels = "аеёиоуыэюяАЕЁИОУЫЭЮЯ"
+        val result = StringBuilder()
+
+        for (ch in word) {
+            result.append(ch)
+            if (ch in vowels) {
+                result.append(ACUTE)
+                break
+            }
+        }
+
+        android.util.Log.d("StressDebug", "placeStressOnOnlyVowel: '$word' -> '$result'")
+
+        return result.toString()
+    }
+
+    private fun applyFallbackStress(word: String): String? {
+        val vowels = "аеёиоуыэюя"
+        val vowelPositions = word.indices.filter { word[it] in vowels }
+        if (vowelPositions.size < 2) return null
+
+        // Ударение на предпоследнюю гласную (не для всех слов конечно но что поделать  лучше так чем ничего)
+        val stressPos = vowelPositions[vowelPositions.size - 2]
+        return word.substring(0, stressPos + 1) + ACUTE + word.substring(stressPos + 1)
+    }
+
 
     private fun applyStressToYo(word: String): String {
         val result = StringBuilder()
@@ -70,6 +120,8 @@ object StressAccentuator {
                         "?action=query&titles=$encoded&prop=revisions" +
                         "&rvprop=content&format=json&rvslots=main"
 
+                android.util.Log.d("RhymeURL", url)
+
                 connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
                 connection.setRequestProperty("User-Agent", "Rifmopult/1.0 (Android; stress accentuator)")
                 connection.connectTimeout = 5000
@@ -79,13 +131,17 @@ object StressAccentuator {
                 if (responseCode != 200) return@withContext null
 
                 val response = connection.inputStream.bufferedReader().readText()
+                android.util.Log.d("RhymeRawResponse", response)
                 val json = JSONObject(response)
 
                 val pages = json.getJSONObject("query").getJSONObject("pages")
                 val pageId = pages.keys().next()
                 val page = pages.getJSONObject(pageId)
 
-                if (page.has("missing")) return@withContext null
+                if (page.has("missing")) {
+                    android.util.Log.d("StressDebug", "Missing in wiktionary: $word")
+                    return@withContext null
+                }
 
                 val content = try {
                     page.getJSONArray("revisions")
@@ -98,7 +154,7 @@ object StressAccentuator {
                 }
 
                 // Обработка перенаправления
-                val redirectPattern = Regex("""#перенаправление \[\[([^\]]+)\]\]""")
+                val redirectPattern = Regex("""#перенаправление \[\[([^]]+)]]""")
                 val redirectMatch = redirectPattern.find(content)
                 if (redirectMatch != null) {
                     val targetWord = redirectMatch.groupValues[1]
@@ -150,7 +206,7 @@ object StressAccentuator {
             var stressedChar = stressedLower[i]
 
             // Пропускаем символ ударения при проверке
-            if (i < stressedLower.length && stressedLower[i] == ACUTE) {
+            if (stressedLower[i] == ACUTE) {
                 stressPos = result.length
                 continue
             }

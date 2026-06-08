@@ -842,7 +842,7 @@ class NoteEditActivity : AppCompatActivity() {
                         if (line.isBlank()) continue
                         for (word in line.split(" ")) {
                             val letters = word.filter { it.isLetter() }.lowercase()
-                            if (letters.isEmpty() || countVowels(letters) <= 1) continue
+                            if (letters.isEmpty()) continue
                             if (StressAccentuator.getFromCache(letters) == null) {
                                 val stressed = StressAccentuator.getStressed(letters)
                                 if (stressed != null) hasNewStress = true
@@ -877,9 +877,9 @@ class NoteEditActivity : AppCompatActivity() {
                         while (pos < line.length && line[pos].isLetter()) pos++
                         val wordEnd = pos
                         val letters = line.substring(wordStart, wordEnd).lowercase()
-                        if (countVowels(letters) > 1) {
+                        if (countVowels(letters) >= 1) {
                             val stressed = StressAccentuator.getFromCache(letters)
-                                ?: if ('ё' in letters) StressAccentuator.getStressedSync(letters) else null
+                                ?: StressAccentuator.getStressedSync(letters)
                             if (stressed != null) {
                                 val acutePos = stressed.indexOf('\u0301')
                                 if (acutePos > 0) {
