@@ -2,14 +2,25 @@
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
     <SwitchPreferenceCompat
         android:key="enable_syllable_panel"
-        android:title="Подсчёт слогов"
+        android:title="Показывать количество слогов"
+        android:summary="Добавлять в конце строк ·N"
         android:defaultValue="false" />
+
     <SwitchPreferenceCompat
         android:key="enable_rhyme_scheme"
         android:title="Схема рифмовки"
+        android:summary="Отмечать рифмующиеся строки цветным кружочком"
         android:defaultValue="false" />
+
     <SwitchPreferenceCompat
         android:key="enable_stress"
-        android:title="Ударения"
+        android:title="Выделение ударений"
+        android:summary="Выделять ударные гласные жирным"
+        android:defaultValue="false" />
+
+    <SwitchPreferenceCompat
+        android:key="enable_rhythm"
+        android:title="Анализ ритма"
+        android:summary="Определять размер стиха (ямб, хорей, дактиль, амфибрахий, анапест)"
         android:defaultValue="false" />
 </PreferenceScreen>

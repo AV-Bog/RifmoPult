@@ -8,7 +8,6 @@
 package com.example.rifmopult
 
 import android.annotation.SuppressLint
-import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.drawable.ShapeDrawable
@@ -50,6 +49,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import androidx.core.graphics.toColorInt
 
+@Suppress("DEPRECATION")
 class NoteEditActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityNoteEditBinding
@@ -89,27 +89,6 @@ class NoteEditActivity : AppCompatActivity() {
 
     private lateinit var noteDao: NoteDao
 
-    @SuppressLint("ClickableViewAccessibility")
-    private val rhymeTouchListener = View.OnTouchListener { view, event ->
-        when (event.action) {
-            MotionEvent.ACTION_DOWN -> {
-                val word = (view as TextView).text.toString()
-                startDraggingRhyme(word, event)
-                true
-            }
-            MotionEvent.ACTION_MOVE -> {
-                updateCursorPosition(event)
-                true
-            }
-            MotionEvent.ACTION_UP,
-            MotionEvent.ACTION_CANCEL -> {
-                dropRhyme(event)
-                true
-            }
-            else -> false
-        }
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityNoteEditBinding.inflate(layoutInflater)
@@ -134,11 +113,10 @@ class NoteEditActivity : AppCompatActivity() {
 
     private fun requestFocusAndShowKeyboard() {
         binding.contentEditText.requestFocus()
-        val post = binding.contentEditText.post {
-            val imm =
-                (getSystemService(/* name = */ INPUT_METHOD_SERVICE) as InputMethodManager).also {
-                    it.showSoftInput(binding.contentEditText, InputMethodManager.SHOW_IMPLICIT)
-                }
+        binding.contentEditText.post {
+            (getSystemService(/* name = */ INPUT_METHOD_SERVICE) as InputMethodManager).also {
+                it.showSoftInput(binding.contentEditText, InputMethodManager.SHOW_IMPLICIT)
+            }
         }
     }
 
@@ -242,12 +220,13 @@ class NoteEditActivity : AppCompatActivity() {
     }
 
     private fun hideKeyboard() {
-        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
         imm.hideSoftInputFromWindow(binding.root.windowToken, 0)
     }
 
+    @SuppressLint("SetTextI18n")
     private fun loadNoteData() {
-        currentNote = intent.getSerializableExtra(EXTRA_NOTE) as? Note
+        currentNote = intent.getSerializableExtra(/* name = */ EXTRA_NOTE) as? Note
 
         if (currentNote == null) {
             isNewNote = true
@@ -281,7 +260,7 @@ class NoteEditActivity : AppCompatActivity() {
                 val date = inputFormat.parse(currentNote?.date ?: "") ?: Date()
                 val outputFormat = SimpleDateFormat("d MMMM yyyy, HH:mm", Locale("ru"))
                 outputFormat.format(date)
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 currentNote?.date ?: ""
             }
             binding.noteDateTextView.text = "Изменено: $displayDate"
@@ -641,13 +620,6 @@ class NoteEditActivity : AppCompatActivity() {
         rhymePopup?.showAtLocation(binding.root, Gravity.BOTTOM, 0, 0)
     }
 
-    private fun getKeyboardHeight(): Int {
-        val rect = android.graphics.Rect()
-        window.decorView.getWindowVisibleDisplayFrame(rect)
-        val screenHeight = window.decorView.height
-        return screenHeight - rect.bottom
-    }
-
     private fun Char.isPunctuation(): Boolean {
         return this in setOf('.', ',', '!', '?', ':', ';', '-', '—', '(', ')', '"', '\'', '…', '[', ']', '{', '}')
     }
@@ -704,7 +676,7 @@ class NoteEditActivity : AppCompatActivity() {
         if (x >= 0 && x <= editText.width && y >= 0 && y <= editText.height) {
             val layout = editText.layout ?: return
             val line = layout.getLineForVertical(y.toInt())
-            val offset = layout.getOffsetForHorizontal(line, x.toFloat())
+            val offset = layout.getOffsetForHorizontal(line, x)
             editText.setSelection(offset)
         }
     }
@@ -753,19 +725,6 @@ class NoteEditActivity : AppCompatActivity() {
         return text.count { it in vowels }
     }
 
-    private val syllableHintRegex = """\s*·[0-9]+\s*$""".toRegex()
-
-    private fun addSyllableHints(text: String): String {
-        return text.split('\n').joinToString("\n") { line ->
-            val cleanLine = line.replace(syllableHintRegex, "")
-            if (cleanLine.isBlank()) {
-                cleanLine
-            } else {
-                val count = countSyllables(cleanLine)
-                "$cleanLine ·$count"
-            }
-        }
-    }
     private var previousLineCount = 0
 
     private fun applySyllableSpansToEditText() {
@@ -849,6 +808,9 @@ class NoteEditActivity : AppCompatActivity() {
                             }
                         }
                     }
+
+                    updateMeterView(cleanLines)
+
                     if (hasNewStress && !isUpdatingText) {
                         isUpdatingText = true
                         applySyllableSpansToEditText()
@@ -966,7 +928,7 @@ class NoteEditActivity : AppCompatActivity() {
                     kotlin.math.min(selectionStart, text.length),
                     kotlin.math.min(selectionEnd, text.length)
                 )
-            } catch (e: Exception) { }
+            } catch (_: Exception) { }
         }
     }
 
@@ -992,4 +954,136 @@ class NoteEditActivity : AppCompatActivity() {
         val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
         return prefs.getBoolean("enable_stress", false)
     }
+
+    private fun isRhythmEnabled(): Boolean {
+        val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+        return prefs.getBoolean("enable_rhythm", false)
+    }
+
+    enum class Meter { IAMB, TROCHEE, DACTYL, AMPHIBRACH, ANAPEST, UNKNOWN }
+
+    private fun getStressPattern(line: String): List<Int> {
+        val pattern = mutableListOf<Int>()
+        val words = line.split(" ").filter { it.isNotBlank() }
+        for (word in words) {
+            val letters = word.filter { it.isLetter() }
+            if (letters.isEmpty()) continue
+            val stressed = StressAccentuator.getFromCache(letters.lowercase())
+                ?: StressAccentuator.getStressedSync(letters.lowercase())
+                ?: letters
+            var syllableIndex = 0
+            var stressedSyllable = -1
+            for (i in stressed.indices) {
+                if (stressed[i] in "аеёиоуыэюяАЕЁИОУЫЭЮЯ") {
+                    syllableIndex++
+                    if (i + 1 < stressed.length && stressed[i + 1] == '\u0301') {
+                        stressedSyllable = syllableIndex
+                    }
+                }
+            }
+            for (s in 1..syllableIndex) {
+                pattern.add(if (s == stressedSyllable) 1 else 0)
+            }
+        }
+        return pattern
+    }
+
+    private fun matchScore(pattern: List<Int>, foot: List<Int>): Double {
+        var matches = 0
+        var total = 0
+        for (i in pattern.indices) {
+            if (foot[i % foot.size] == 1) {
+                total++
+                if (pattern[i] == 1) matches++
+            }
+        }
+        return if (total == 0) 0.0 else matches.toDouble() / total
+    }
+
+    private fun detectMeter(pattern: List<Int>): Meter {
+        if (pattern.size < 2) return Meter.UNKNOWN
+        val scores = mapOf(
+            Meter.IAMB       to matchScore(pattern, listOf(0, 1)),
+            Meter.TROCHEE    to matchScore(pattern, listOf(1, 0)),
+            Meter.DACTYL     to matchScore(pattern, listOf(1, 0, 0)),
+            Meter.AMPHIBRACH to matchScore(pattern, listOf(0, 1, 0)),
+            Meter.ANAPEST    to matchScore(pattern, listOf(0, 0, 1))
+        )
+        return scores.maxByOrNull { it.value }
+            ?.takeIf { it.value > 0.6 }?.key ?: Meter.UNKNOWN
+    }
+
+
+    private fun updateMeterView(cleanLines: List<String>) {
+        if (!isRhythmEnabled()) {
+            binding.meterTextView.visibility = View.GONE
+            return
+        }
+
+        val nonBlankLines = cleanLines.filter { it.isNotBlank() }
+        if (nonBlankLines.isEmpty()) {
+            binding.meterTextView.visibility = View.GONE
+            return
+        }
+
+        // Грузим ударения иначе капес
+        runBlocking {
+            for (line in nonBlankLines) {
+                for (word in line.split(" ")) {
+                    val letters = word.filter { it.isLetter() }.lowercase()
+                    if (letters.isNotEmpty() && StressAccentuator.getFromCache(letters) == null) {
+                        StressAccentuator.getStressed(letters)
+                    }
+                }
+            }
+        }
+
+        // Определяем доминирующий размер
+        val patterns = nonBlankLines.map { getStressPattern(it) }
+
+        val meters = patterns.map { detectMeter(it) }
+        val dominantMeter = meters
+            .filter { it != Meter.UNKNOWN }
+            .groupingBy { it }
+            .eachCount()
+            .maxByOrNull { it.value }?.key ?: Meter.UNKNOWN
+
+        val meterName = when (dominantMeter) {
+            Meter.IAMB       -> "ямб"
+            Meter.TROCHEE    -> "хорей"
+            Meter.DACTYL     -> "дактиль"
+            Meter.AMPHIBRACH -> "амфибрахий"
+            Meter.ANAPEST    -> "анапест"
+            Meter.UNKNOWN    -> null
+        }
+
+        if (meterName == null) {
+            binding.meterTextView.visibility = View.GONE
+            return
+        }
+
+        // Сбои
+        val dominantFoot = when (dominantMeter) {
+            Meter.IAMB       -> listOf(0, 1)
+            Meter.TROCHEE    -> listOf(1, 0)
+            Meter.DACTYL     -> listOf(1, 0, 0)
+            Meter.AMPHIBRACH -> listOf(0, 1, 0)
+            Meter.ANAPEST    -> listOf(0, 0, 1)
+            else             -> listOf(0, 1)
+        }
+
+        val brokenCount = patterns.count { pattern ->
+            pattern.isNotEmpty() && matchScore(pattern, dominantFoot) < 0.5
+        }
+
+        binding.meterTextView.visibility = View.VISIBLE
+        binding.meterTextView.text = if (brokenCount > 0) {
+            "$meterName · сбоев: $brokenCount"
+        } else {
+            meterName
+        }
+
+        android.util.Log.d("MeterDebug", "Detected meter: $meterName, broken: $brokenCount")
+    }
+
 }

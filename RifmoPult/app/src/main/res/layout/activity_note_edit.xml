@@ -98,12 +98,27 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintHorizontal_bias="0.0" />
 
+    <TextView
+        android:id="@+id/meterTextView"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="23dp"
+        android:layout_marginEnd="20dp"
+        android:layout_marginBottom="4dp"
+        android:textSize="12sp"
+        android:textColor="#666666"
+        android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@id/noteDateTextView"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.0" />
+
     <FrameLayout
         android:id="@+id/textContainer"
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:layout_margin="16dp"
-        app:layout_constraintTop_toBottomOf="@id/noteDateTextView"
+        app:layout_constraintTop_toBottomOf="@id/meterTextView"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
