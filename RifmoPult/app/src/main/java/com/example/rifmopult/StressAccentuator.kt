@@ -15,6 +15,8 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
 
 object StressAccentuator {
 
@@ -27,17 +29,13 @@ object StressAccentuator {
     }
 
     suspend fun getStressed(word: String): String? {
-        android.util.Log.e("StressDebug", "word='$word' vowels=${countVowels(word.lowercase())} chars=${word.map{it.code}}")
-        android.util.Log.d("StressDebug", "Word bytes: ${word.map { it.code }}")
+        android.util.Log.d("StressDebug", "word='$word' vowels=${countVowels(word.lowercase())}")
+
         val lower = word.lowercase()
 
         if ('ё' in lower) return applyStressToYo(word)
 
-        val vowelCount = countVowels(lower)
-        if (vowelCount == 0) return word
-        if (vowelCount == 1) return placeStressOnOnlyVowel(word)
-
-        // Проверка кэша ТОЛЬКО для многосложных
+        // Проверка кэша для всех слов
         getFromCache(word)?.let {
             android.util.Log.d("StressDebug", "From cache: $it")
             return it
@@ -48,19 +46,19 @@ object StressAccentuator {
             return restored
         }
 
-        // Запрос к API для многосложных
+        // Запрос к API Morpher для всех слов
         return requestMutex.withLock {
             getFromCache(word)?.let { return@withLock it }
             getFromCache(lower)?.let { return@withLock restoreCase(word, it) }
 
-            val fromApi = fetchFromWiktionary(lower)
+            val fromApi = fetchFromMorpher(lower)
             if (fromApi != null) {
                 val withCase = restoreCase(word, fromApi)
                 saveToCache(word, withCase)
                 saveToCache(lower, fromApi)
                 withCase
             } else {
-                // Фоллбэк для многосложных
+                // Фоллбэк - если API не ответил, пробуем поставить ударение самостоятельно
                 val fallback = applyFallbackStress(lower)
                 if (fallback != null) {
                     saveToCache(lower, fallback)
@@ -74,33 +72,51 @@ object StressAccentuator {
         }
     }
 
-    private fun placeStressOnOnlyVowel(word: String): String {
-        val vowels = "аеёиоуыэюяАЕЁИОУЫЭЮЯ"
-        val result = StringBuilder()
+    private suspend fun fetchFromMorpher(word: String, retryCount: Int = 0): String? =
+        withContext(Dispatchers.IO) {
+            var connection: HttpURLConnection? = null
+            try {
+                val url = URL("https://morpher.ru/ws3")
+                connection = url.openConnection() as HttpURLConnection
+                connection.requestMethod = "POST"
+                connection.setRequestProperty("Content-Type", "text/plain; charset=utf-8")
+                connection.setRequestProperty("Accept", "application/json")
+                connection.doOutput = true
+                connection.connectTimeout = 5000
+                connection.readTimeout = 5000
 
-        for (ch in word) {
-            result.append(ch)
-            if (ch in vowels) {
-                result.append(ACUTE)
-                break
+                // Отправляем слово в теле запроса
+                connection.outputStream.use { os ->
+                    os.write(word.toByteArray(Charsets.UTF_8))
+                }
+
+                val responseCode = connection.responseCode
+                if (responseCode != 200) {
+                    android.util.Log.e("StressDebug", "Morpher API error: $responseCode for word '$word'")
+                    return@withContext null
+                }
+
+                val response = connection.inputStream.bufferedReader(Charsets.UTF_8).readText()
+                android.util.Log.d("StressDebug", "Morpher response for '$word': $response")
+
+                // Парсим JSON ответ
+                val json = JSONObject(response)
+                val stressedWord = json.optString("string", null)
+
+                if (stressedWord != null && stressedWord.isNotEmpty()) {
+                    android.util.Log.d("StressDebug", "Morpher returned: '$stressedWord' for '$word'")
+                    return@withContext stressedWord
+                }
+
+                return@withContext null
+
+            } catch (e: Exception) {
+                android.util.Log.e("StressDebug", "Error fetching from Morpher for '$word': ${e.message}")
+                return@withContext null
+            } finally {
+                connection?.disconnect()
             }
         }
-
-        android.util.Log.d("StressDebug", "placeStressOnOnlyVowel: '$word' -> '$result'")
-
-        return result.toString()
-    }
-
-    private fun applyFallbackStress(word: String): String? {
-        val vowels = "аеёиоуыэюя"
-        val vowelPositions = word.indices.filter { word[it] in vowels }
-        if (vowelPositions.size < 2) return null
-
-        // Ударение на предпоследнюю гласную (не для всех слов конечно но что поделать  лучше так чем ничего)
-        val stressPos = vowelPositions[vowelPositions.size - 2]
-        return word.substring(0, stressPos + 1) + ACUTE + word.substring(stressPos + 1)
-    }
-
 
     private fun applyStressToYo(word: String): String {
         val result = StringBuilder()
@@ -111,79 +127,24 @@ object StressAccentuator {
         return result.toString()
     }
 
-    private suspend fun fetchFromWiktionary(word: String, retryCount: Int = 0): String? =
-        withContext(Dispatchers.IO) {
-            var connection: java.net.HttpURLConnection? = null
-            try {
-                val encoded = java.net.URLEncoder.encode(word, "UTF-8")
-                val url = "https://ru.wiktionary.org/w/api.php" +
-                        "?action=query&titles=$encoded&prop=revisions" +
-                        "&rvprop=content&format=json&rvslots=main"
+    private fun applyFallbackStress(word: String): String? {
+        val vowels = "аеёиоуыэюя"
+        val vowelPositions = word.indices.filter { word[it] in vowels }
 
-                android.util.Log.d("RhymeURL", url)
-
-                connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
-                connection.setRequestProperty("User-Agent", "Rifmopult/1.0 (Android; stress accentuator)")
-                connection.connectTimeout = 5000
-                connection.readTimeout = 5000
-
-                val responseCode = connection.responseCode
-                if (responseCode != 200) return@withContext null
-
-                val response = connection.inputStream.bufferedReader().readText()
-                android.util.Log.d("RhymeRawResponse", response)
-                val json = JSONObject(response)
-
-                val pages = json.getJSONObject("query").getJSONObject("pages")
-                val pageId = pages.keys().next()
-                val page = pages.getJSONObject(pageId)
-
-                if (page.has("missing")) {
-                    android.util.Log.d("StressDebug", "Missing in wiktionary: $word")
-                    return@withContext null
-                }
-
-                val content = try {
-                    page.getJSONArray("revisions")
-                        .getJSONObject(0)
-                        .getJSONObject("slots")
-                        .getJSONObject("main")
-                        .getString("*")
-                } catch (e: Exception) {
-                    return@withContext null
-                }
-
-                // Обработка перенаправления
-                val redirectPattern = Regex("""#перенаправление \[\[([^]]+)]]""")
-                val redirectMatch = redirectPattern.find(content)
-                if (redirectMatch != null) {
-                    val targetWord = redirectMatch.groupValues[1]
-                    android.util.Log.d("StressFlow", "Redirect: $word -> $targetWord")
-                    return@withContext fetchFromWiktionary(targetWord, retryCount)
-                }
-
-                // Поиск ударения в шаблоне по-слогам
-                val syllablePattern = Regex("""\{\{по[-\s]слогам\|([^}|]+)\|([^}]+)\}\}""")
-                val match = syllablePattern.find(content)
-
-                if (match != null) {
-                    val stressedWord = match.groupValues[1] + match.groupValues[2]
-                    android.util.Log.d("StressFlow", "Found stressed: $stressedWord for $word")
-                    return@withContext stressedWord.lowercase()
-                }
-
-                return@withContext null
-
-            } catch (e: java.net.UnknownHostException) {
-                android.util.Log.e("StressDebug", "Network error for $word: ${e.message}")
-                return@withContext null
-            } catch (e: Exception) {
-                android.util.Log.e("StressDebug", "Error for $word: ${e.javaClass.simpleName}: ${e.message}")
-                return@withContext null
-            } finally {
-                connection?.disconnect()
-            }
+        // Для односложных слов ставим ударение на единственную гласную
+        if (vowelPositions.size == 1) {
+            val stressPos = vowelPositions[0]
+            return word.substring(0, stressPos + 1) + ACUTE + word.substring(stressPos + 1)
         }
+
+        // Для многосложных - на предпоследнюю гласную
+        if (vowelPositions.size >= 2) {
+            val stressPos = vowelPositions[vowelPositions.size - 2]
+            return word.substring(0, stressPos + 1) + ACUTE + word.substring(stressPos + 1)
+        }
+
+        return null
+    }
 
     // Восстановление регистра с сохранением позиции ударения
     private fun restoreCase(original: String, stressed: String): String {
@@ -206,7 +167,7 @@ object StressAccentuator {
             var stressedChar = stressedLower[i]
 
             // Пропускаем символ ударения при проверке
-            if (stressedLower[i] == ACUTE) {
+            if (i < stressedLower.length && stressedLower[i] == ACUTE) {
                 stressPos = result.length
                 continue
             }
