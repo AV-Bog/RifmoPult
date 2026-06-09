@@ -35,6 +35,36 @@ object StressAccentuator {
 
         if ('ё' in lower) return applyStressToYo(word)
 
+        val vowelCount = countVowels(lower)
+
+        // Если в слове одна гласная
+        if (vowelCount == 1) {
+            val vowels = "аеёиоуыэюя"
+            val stressPos = lower.indexOfFirst { it in vowels }
+            if (stressPos >= 0) {
+                val stressed = lower.substring(0, stressPos + 1) + ACUTE + lower.substring(stressPos + 1)
+                val withCase = restoreCase(word, stressed)
+                saveToCache(word, withCase)
+                saveToCache(lower, stressed)
+                android.util.Log.d("StressDebug", "Short word (1 vowel): $withCase")
+                return withCase
+            }
+        }
+
+        // Если слово очень короткое (1-2 буквы) и есть гласная
+        if (lower.length <= 2 && vowelCount > 0) {
+            val vowels = "аеёиоуыэюя"
+            val stressPos = lower.indexOfFirst { it in vowels }
+            if (stressPos >= 0) {
+                val stressed = lower.substring(0, stressPos + 1) + ACUTE + lower.substring(stressPos + 1)
+                val withCase = restoreCase(word, stressed)
+                saveToCache(word, withCase)
+                saveToCache(lower, stressed)
+                android.util.Log.d("StressDebug", "Very short word: $withCase")
+                return withCase
+            }
+        }
+
         // Проверка кэша для всех слов
         getFromCache(word)?.let {
             android.util.Log.d("StressDebug", "From cache: $it")
@@ -46,7 +76,6 @@ object StressAccentuator {
             return restored
         }
 
-        // Запрос к API Morpher для всех слов
         return requestMutex.withLock {
             getFromCache(word)?.let { return@withLock it }
             getFromCache(lower)?.let { return@withLock restoreCase(word, it) }
@@ -58,7 +87,6 @@ object StressAccentuator {
                 saveToCache(lower, fromApi)
                 withCase
             } else {
-                // Фоллбэк - если API не ответил, пробуем поставить ударение самостоятельно
                 val fallback = applyFallbackStress(lower)
                 if (fallback != null) {
                     saveToCache(lower, fallback)
@@ -158,15 +186,21 @@ object StressAccentuator {
             return stressed
         }
 
+        // Для однобуквенных слов - просто возвращаем stressed с правильным регистром
+        if (original.length == 1) {
+            return if (original[0].isUpperCase())
+                stressed.uppercase()
+            else
+                stressed.lowercase()
+        }
+
         val result = StringBuilder()
         var stressPos = -1
 
-        // Строим результат, сохраняя регистр из original
         for (i in originalLower.indices) {
             val origChar = original[i]
             var stressedChar = stressedLower[i]
 
-            // Пропускаем символ ударения при проверке
             if (i < stressedLower.length && stressedLower[i] == ACUTE) {
                 stressPos = result.length
                 continue
@@ -178,7 +212,6 @@ object StressAccentuator {
             )
         }
 
-        // Вставляем ударение на правильную позицию
         return if (stressPos >= 0) {
             result.insert(stressPos, ACUTE).toString()
         } else {
