@@ -23,17 +23,6 @@ object AnalyticsHelper {
         AppMetrica.reportEvent("screen_open", data)
     }
 
-    fun trackNoteSaved(noteLength: Int, editTimeSeconds: Long, isNewNote: Boolean) {
-        val data = JSONObject().apply {
-            put("note_length", noteLength)
-            put("edit_time_seconds", editTimeSeconds)
-            put("is_new_note", isNewNote)
-            put("has_rhyme", noteLength > 0) // если есть текст, возможно есть рифма
-        }.toString()
-
-        AppMetrica.reportEvent("note_saved", data)
-    }
-
     fun trackNoteDeleted(noteLength: Int, noteAgeHours: Long) {
         val data = JSONObject().apply {
             put("note_length", noteLength)
@@ -57,33 +46,6 @@ object AnalyticsHelper {
 
         val eventName = if (success) "rhyme_search_success" else "rhyme_search_failed"
         AppMetrica.reportEvent(eventName, data)
-    }
-
-    fun trackSettingChanged(settingName: String, newValue: String) {
-        val data = JSONObject().apply {
-            put("setting", settingName)
-            put("value", newValue)
-        }.toString()
-
-        AppMetrica.reportEvent("setting_changed", data)
-    }
-
-    fun trackError(errorType: String, message: String) {
-        val data = JSONObject().apply {
-            put("error_type", errorType)
-            put("message", message.take(200)) // ограничиваем длину
-        }.toString()
-
-        AppMetrica.reportEvent("app_error", data)
-    }
-
-    fun trackSessionEnd(sessionDurationSeconds: Long, screensVisited: Int) {
-        val data = JSONObject().apply {
-            put("session_duration_seconds", sessionDurationSeconds)
-            put("screens_visited", screensVisited)
-        }.toString()
-
-        AppMetrica.reportEvent("session_end", data)
     }
 
     fun trackNoteOpened(noteLength: Int) {

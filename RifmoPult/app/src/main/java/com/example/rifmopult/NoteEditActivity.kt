@@ -89,6 +89,7 @@ class NoteEditActivity : AppCompatActivity() {
 
     private lateinit var noteDao: NoteDao
 
+    // инициализирует интерфейс, базу данных, загружает заметку и настраивает обработчики
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityNoteEditBinding.inflate(layoutInflater)
@@ -111,6 +112,7 @@ class NoteEditActivity : AppCompatActivity() {
         requestFocusAndShowKeyboard()
     }
 
+    // устанавливает фокус на поле ввода и показывает клавиатуру
     private fun requestFocusAndShowKeyboard() {
         binding.contentEditText.requestFocus()
         binding.contentEditText.post {
@@ -120,6 +122,7 @@ class NoteEditActivity : AppCompatActivity() {
         }
     }
 
+    // настраивает кнопки закрытия, отмены/повтора, сохранения и шаринга и их поведение
     private fun setupToolbar() {
         binding.btnClose.setOnClickListener {
             handleExitWithAutoSave()
@@ -191,6 +194,7 @@ class NoteEditActivity : AppCompatActivity() {
         updateUndoRedoButtons()
     }
 
+    // сохраняет текущие заголовок и содержимое заметки в бд
     private fun saveCurrentNoteToDatabase() {
         val title = binding.titleEditText.text.toString().trim()
         val cleanContent = stripSyllableHints(binding.contentEditText.text.toString()).trim()
@@ -219,12 +223,14 @@ class NoteEditActivity : AppCompatActivity() {
         updateSaveButton()
     }
 
+    // программно скрывает экранную клавиатуру
     private fun hideKeyboard() {
         val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
         imm.hideSoftInputFromWindow(binding.root.windowToken, 0)
     }
 
     @SuppressLint("SetTextI18n")
+    // загружает существующую или создаёт новую заметку, восстанавливает историю и отображает дату
     private fun loadNoteData() {
         currentNote = intent.getSerializableExtra(/* name = */ EXTRA_NOTE) as? Note
 
@@ -289,6 +295,7 @@ class NoteEditActivity : AppCompatActivity() {
     private val stressDebounceHandler = Handler(Looper.getMainLooper())
     private var stressDebounceRunnable: Runnable? = null
 
+    // меняет цвет и включает/отключает кнопку сохранения в зависимости от наличия несохранённых изменений
     private fun updateSaveButton() {
         val color = if (hasUnsavedChanges) {
             getColor(android.R.color.black)
@@ -299,11 +306,13 @@ class NoteEditActivity : AppCompatActivity() {
         binding.btnSave.isEnabled = hasUnsavedChanges
     }
 
+    // возвращает текущую дату и время
     private fun getCurrentDate(): String {
         val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
         return sdf.format(Date())
     }
 
+    // добавляет текущее состояние текста без подсказок в историю для УндоРендо
     private fun saveToHistoryWithCleanText(cleanContent: String) {
         if (isUndoingOrRedoing) return
 
@@ -335,6 +344,7 @@ class NoteEditActivity : AppCompatActivity() {
         updateSaveButton()
     }
 
+    // обновляет видимость и доступность кнопок отмены и повтора действий
     private fun updateUndoRedoButtons() {
         binding.btnUndo.visibility = if (history.size > 1) View.VISIBLE else View.GONE
         binding.btnRedo.visibility = if (history.size > 1 && historyIndex < history.size - 1) View.VISIBLE else View.GONE
@@ -343,6 +353,7 @@ class NoteEditActivity : AppCompatActivity() {
         binding.btnRedo.isEnabled = historyIndex < history.size - 1
     }
 
+    // устанавливает слушатели изменений текста для автосохранения, расстановки ударений и подсказок
     private fun setupTextChangeListeners() {
 
         val updateHistoryIfNeeded = {
@@ -459,6 +470,7 @@ class NoteEditActivity : AppCompatActivity() {
         })
     }
 
+    // показывает диалоговое окно для ручного изменения ударения в выбранном слове
     private fun showChangeStressDialog(word: String) {
         val lower = word.lowercase()
         val vowels = "аеёиоуыэюя"
@@ -530,12 +542,14 @@ class NoteEditActivity : AppCompatActivity() {
         dialog.show()
     }
 
+    // определяет, включена ли тёмная тема оформления
     private fun isDarkTheme(): Boolean {
         return (resources.configuration.uiMode and
                 android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
                 android.content.res.Configuration.UI_MODE_NIGHT_YES
     }
 
+    // обрабатывает выход из редактора с автоматическим сохранением изменений
     private fun handleExitWithAutoSave() {
         val currentTitle = binding.titleEditText.text.toString()
         val currentContentWithHints = binding.contentEditText.text.toString()
@@ -572,6 +586,7 @@ class NoteEditActivity : AppCompatActivity() {
         finish()
     }
 
+    // создаёт меню действий (удаление, настройки) в зависимости от режима
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.menu_note_edit, menu)
         if (isNewNote) {
@@ -580,6 +595,7 @@ class NoteEditActivity : AppCompatActivity() {
         return true
     }
 
+    // обрабатывает выбор пунктов меню (удаление заметки или открытие настроек)
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
             R.id.action_delete -> {
@@ -594,6 +610,7 @@ class NoteEditActivity : AppCompatActivity() {
         }
     }
 
+    // завершает активность с результатом удаления заметки
     private fun deleteNote() {
         val resultIntent = Intent().apply {
             putExtra(EXTRA_NOTE_RESULT, currentNote)
@@ -606,6 +623,7 @@ class NoteEditActivity : AppCompatActivity() {
 
     @SuppressLint("ClickableViewAccessibility", "InflateParams", "SetTextI18n")
 
+    // отображает панель с рифмами для выбранного слова, асинк
     private fun showRhymePanel(word: String) {
         android.util.Log.d("RhymeDebug", "showRhymePanel called with word: $word")
         selectedWord = word
@@ -721,6 +739,7 @@ class NoteEditActivity : AppCompatActivity() {
         return this in setOf('.', ',', '!', '?', ':', ';', '-', '—', '(', ')', '"', '\'', '…', '[', ']', '{', '}')
     }
 
+    // инициирует перетаскивание выбранного слова-рифмы из панели
     private fun startDraggingRhyme(word: String, event: MotionEvent) {
         draggedRhyme = word
         isDragging = true
@@ -778,6 +797,7 @@ class NoteEditActivity : AppCompatActivity() {
         }
     }
 
+    // вставляет перетаскиваемую рифму в текст в позиции курсора
     private fun dropRhyme(event: MotionEvent) {
         if (!isDragging) return
 
@@ -817,6 +837,7 @@ class NoteEditActivity : AppCompatActivity() {
         isDragging = false
     }
 
+    // кол-во слогов
     private fun countSyllables(text: String): Int {
         val vowels = "аеёиоуыэюяАЕЁИОУЫЭЮЯ"
         return text.count { it in vowels }
@@ -824,6 +845,7 @@ class NoteEditActivity : AppCompatActivity() {
 
     private var previousLineCount = 0
 
+    // добавляет в текст подсказки с количеством слогов, цветные кружки рифм и выделение ударений
     private fun applySyllableSpansToEditText() {
         val editText = binding.contentEditText
         val text = editText.text as? SpannableStringBuilder ?: run {
@@ -1029,6 +1051,7 @@ class NoteEditActivity : AppCompatActivity() {
         }
     }
 
+    // удаляет все служебное
     private fun stripSyllableHints(text: String): String {
         val hintRegex = """\s*·[0-9]+\s*(●)?\s*$""".toRegex()
         val circleOnlyRegex = """\s*●\s*$""".toRegex()
@@ -1037,21 +1060,25 @@ class NoteEditActivity : AppCompatActivity() {
         }.removeSuffix("\n")
     }
 
+    // возвращает значение настройки "показывать подсказки слогов"
     private fun isSyllableHintsEnabled(): Boolean {
         val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
         return prefs.getBoolean("enable_syllable_panel", false)
     }
 
+    // возвращает значение настройки "показывать схему рифмовки"
     private fun isRhymeSchemeEnabled(): Boolean {
         val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
         return prefs.getBoolean("enable_rhyme_scheme", false)
     }
 
+    // возвращает значение настройки "выделять ударения"
     private fun isStressEnabled(): Boolean {
         val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
         return prefs.getBoolean("enable_stress", false)
     }
 
+    // возвращает значение настройки "определять ритм"
     private fun isRhythmEnabled(): Boolean {
         val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
         return prefs.getBoolean("enable_rhythm", false)
@@ -1059,6 +1086,7 @@ class NoteEditActivity : AppCompatActivity() {
 
     enum class Meter { IAMB, TROCHEE, DACTYL, AMPHIBRACH, ANAPEST, UNKNOWN }
 
+    // анализирует строку и возвращает список 0/1, 1 — ударный слог
     private fun getStressPattern(line: String): List<Int> {
         val pattern = mutableListOf<Int>()
         val words = line.split(" ").filter { it.isNotBlank() }
@@ -1085,6 +1113,7 @@ class NoteEditActivity : AppCompatActivity() {
         return pattern
     }
 
+    // вычисляет, насколько шаблон ударений соответствует стопе размера
     private fun matchScore(pattern: List<Int>, foot: List<Int>): Double {
         var matches = 0
         var total = 0
@@ -1097,6 +1126,7 @@ class NoteEditActivity : AppCompatActivity() {
         return if (total == 0) 0.0 else matches.toDouble() / total
     }
 
+    // определяет стихотворный размер (ямб, хорей) по шаблону ударений
     private fun detectMeter(pattern: List<Int>): Meter {
         if (pattern.size < 2) return Meter.UNKNOWN
         val scores = mapOf(
@@ -1110,7 +1140,7 @@ class NoteEditActivity : AppCompatActivity() {
             ?.takeIf { it.value > 0.6 }?.key ?: Meter.UNKNOWN
     }
 
-
+    // анализирует все строки текста, определяет доминирующий размер и отображает его с количеством сбоев
     private fun updateMeterView(cleanLines: List<String>) {
         if (!isRhythmEnabled()) {
             binding.meterTextView.visibility = View.GONE

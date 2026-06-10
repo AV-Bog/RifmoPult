@@ -167,7 +167,7 @@ object StressAccentuator {
         val vowels = "аеёиоуыэюя"
         val vowelPositions = word.indices.filter { word[it] in vowels }
 
-        // Для односложных слов ставим ударение на единственную гласную
+        // Для односложных слов ставим ударение на единственную гласную!!!
         if (vowelPositions.size == 1) {
             val stressPos = vowelPositions[0]
             return word.substring(0, stressPos + 1) + ACUTE + word.substring(stressPos + 1)

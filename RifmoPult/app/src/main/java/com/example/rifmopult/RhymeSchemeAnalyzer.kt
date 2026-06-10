@@ -28,21 +28,18 @@ object RhymeSchemeAnalyzer {
     private const val MIN_ENDING_LENGTH = 2
 
     /**
-     * Принимает список строк стиха (чистых, без подсказок слогов).
      * Возвращает список цветов — по одному на каждую строку.
-     * Пустые строки возвращают null (разделитель строф, сброс групп).
      */
     fun analyze(lines: List<String>): List<Int?> {
         val result = mutableListOf<Int?>()
         // Группы рифм в пределах текущей строфы: окончание -> индекс цвета
         var currentGroups = mutableMapOf<String, Int>()
         var colorIndex = 0
-        // Сколько строк с одинаковым окончанием встретили (для порогового решения)
+        // Сколько строк с одинаковым окончанием встретили
         val endingCount = mutableMapOf<String, Int>()
 
         for (line in lines) {
             if (line.isBlank()) {
-                // Пустая строка = граница строфы, сбрасываем всё
                 result.add(null)
                 currentGroups = mutableMapOf()
                 colorIndex = 0
@@ -56,29 +53,22 @@ object RhymeSchemeAnalyzer {
                 continue
             }
 
-            // Ищем похожее окончание среди уже известных групп
             val matchedEnding = currentGroups.keys.firstOrNull { existingEnding ->
                 endingsMatch(ending, existingEnding)
             }
 
             if (matchedEnding != null) {
-                // Строка рифмуется с уже существующей группой
                 result.add(RHYME_COLORS[currentGroups[matchedEnding]!!])
                 endingCount[matchedEnding] = (endingCount[matchedEnding] ?: 1) + 1
             } else {
-                // Новое окончание — добавляем как потенциальную группу
-                // Цвет присвоим только когда найдётся вторая строка с таким же окончанием
                 currentGroups[ending] = colorIndex % 10
                 endingCount[ending] = 1
                 colorIndex++
-                // Пока считаем нерифмующейся — покрасим серым,
-                // но если позже найдётся пара — перекрасим
                 result.add(NO_RHYME_COLOR)
             }
         }
 
-        // Второй проход: перекрашиваем строки у которых нашлась пара
-        // (те что были добавлены как "первые" в группе и получили серый)
+        // перекрашиваем строки у которых нашлась пара (те что были добавлены как "первые" в группе и получили серый)
         var lineIndex = 0
         var groupsForSecondPass = mutableMapOf<String, Int>()
         colorIndex = 0
@@ -111,7 +101,7 @@ object RhymeSchemeAnalyzer {
             lineIndex++
         }
 
-        // Финальный проход с полной информацией
+        // Фин проход
         val finalResult = mutableListOf<Int?>()
         var finalGroups = mutableMapOf<String, Int>()
         var finalColorIndex = 0
@@ -145,7 +135,7 @@ object RhymeSchemeAnalyzer {
                 finalColorIndex++
 
                 // Проверяем: встретится ли это окончание ещё раз в тексте?
-                val totalOccurrences = countEndingOccurrences(ending, lines, finalGroups)
+                val totalOccurrences = countEndingOccurrences(ending, lines)
                 if (totalOccurrences > 1) {
                     finalResult.add(RHYME_COLORS[newColorIndex])
                 } else {
@@ -164,7 +154,6 @@ object RhymeSchemeAnalyzer {
     private fun countEndingOccurrences(
         ending: String,
         lines: List<String>,
-        existingGroups: Map<String, Int>,
     ): Int {
         var count = 0
         for (line in lines) {
@@ -183,7 +172,6 @@ object RhymeSchemeAnalyzer {
         val cleanLine = line.trim()
         if (cleanLine.isEmpty()) return null
 
-        // Берём последнее слово (только буквы)
         val lastWord = cleanLine
             .split(" ", "\t")
             .lastOrNull { it.any { c -> c.isLetter() } }
@@ -193,19 +181,14 @@ object RhymeSchemeAnalyzer {
 
         if (lastWord.length < MIN_ENDING_LENGTH) return null
 
-        // Находим позицию последней гласной
         val vowels = "аеёиоуыэюяaeiouy"
         val lastVowelIndex = lastWord.indexOfLast { it in vowels }
 
         if (lastVowelIndex < 0) return null
 
-        // Окончание = от последней гласной до конца слова
         return lastWord.substring(lastVowelIndex)
     }
 
-    /**
-     * Сравнивает два окончания с небольшой гибкостью.
-     */
     private fun endingsMatch(a: String, b: String): Boolean {
         if (a == b) return true
         // Минимальная общая длина для сравнения
