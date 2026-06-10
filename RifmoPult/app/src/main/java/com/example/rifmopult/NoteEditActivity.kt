@@ -408,6 +408,8 @@ class NoteEditActivity : AppCompatActivity() {
             override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
                 menu.add(Menu.NONE, 1, 0, "Рифма к слову")
                     .setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+                menu.add(Menu.NONE, 2, 1, "Изменить ударение")
+                    .setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
                 return true
             }
 
@@ -434,9 +436,104 @@ class NoteEditActivity : AppCompatActivity() {
                     mode.finish()
                     return true
                 }
+                if (item.itemId == 2) {
+                    val editText = binding.contentEditText
+                    val start = editText.selectionStart
+                    val end = editText.selectionEnd
+                    if (start >= 0 && end >= 0) {
+                        val rawText = editText.text.toString()
+                        val rawWord = rawText.substring(
+                            kotlin.math.min(start, end),
+                            kotlin.math.max(start, end)
+                        ).trim()
+                        val word = rawWord.filter { it.isLetter() }
+                        if (word.isNotEmpty()) {
+                            showChangeStressDialog(word)
+                        }
+                    }
+                    mode.finish()
+                    return true
+                }
                 return false
             }
         })
+    }
+
+    private fun showChangeStressDialog(word: String) {
+        val lower = word.lowercase()
+        val vowels = "аеёиоуыэюя"
+
+        val currentStressedVowelIdx: Int = run {
+            val cached = StressAccentuator.getFromCache(lower)
+            if (cached != null) {
+                val acutePos = cached.indexOf('\u0301')
+                if (acutePos > 0) {
+                    var vowelCount = 0
+                    for (ch in cached.substring(0, acutePos)) {
+                        if (ch in vowels) vowelCount++
+                    }
+                    vowelCount - 1
+                } else -1
+            } else -1
+        }
+
+        val dialogView = LayoutInflater.from(this)
+            .inflate(R.layout.dialog_change_stress, null)
+
+        val wordRow = dialogView.findViewById<LinearLayout>(R.id.stressWordRow)
+
+        var dialog: android.app.AlertDialog? = null
+
+        var vowelIdx = 0
+        for (ch in lower) {
+            val letterView = TextView(this).apply {
+                text = ch.toString()
+                textSize = 28f
+                setPadding(2, 0, 2, 0)
+            }
+            if (ch in vowels) {
+                val thisVowelIdx = vowelIdx++
+                if (thisVowelIdx == currentStressedVowelIdx) {
+                    letterView.setTextColor("#999999".toColorInt())
+                    letterView.typeface = android.graphics.Typeface.DEFAULT_BOLD
+                } else {
+                    letterView.setTextColor("#378ADD".toColorInt())
+                    letterView.typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    letterView.setOnClickListener {
+                        val stressedLower = StressAccentuator.buildStressedString(lower, thisVowelIdx)
+                        val stressedOriginal = StressAccentuator.buildStressedString(word, thisVowelIdx)
+                        StressAccentuator.saveToCache(lower, stressedLower)
+                        StressAccentuator.saveToCache(word, stressedOriginal)
+                        dialog?.dismiss()
+                        isUpdatingText = true
+                        applySyllableSpansToEditText()
+                        isUpdatingText = false
+                    }
+                }
+            } else {
+                letterView.setTextColor(
+                    if (isDarkTheme()) "#FFFFFF".toColorInt()
+                    else "#000000".toColorInt()
+                )
+            }
+            wordRow.addView(letterView)
+        }
+
+        dialogView.findViewById<Button>(R.id.stressDialogCancel).setOnClickListener {
+            dialog?.dismiss()
+        }
+
+        dialog = android.app.AlertDialog.Builder(this, R.style.RoundedDialog)
+            .setView(dialogView)
+            .create()
+
+        dialog.show()
+    }
+
+    private fun isDarkTheme(): Boolean {
+        return (resources.configuration.uiMode and
+                android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+                android.content.res.Configuration.UI_MODE_NIGHT_YES
     }
 
     private fun handleExitWithAutoSave() {

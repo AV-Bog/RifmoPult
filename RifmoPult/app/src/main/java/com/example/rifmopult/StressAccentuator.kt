@@ -35,7 +35,13 @@ object StressAccentuator {
 
         val lower = word.lowercase()
 
-        if ('ё' in lower) return applyStressToYo(word)
+        if ('ё' in lower) {
+            val stressed = applyStressToYo(lower)
+            val stressedWithCase = restoreCase(word, stressed)
+            saveToCache(lower, stressed)
+            saveToCache(word, stressedWithCase)
+            return stressedWithCase
+        }
 
         val vowelCount = countVowels(lower)
 
@@ -239,7 +245,7 @@ object StressAccentuator {
         } catch (_: Exception) { null }
     }
 
-    private fun saveToCache(word: String, stressed: String) {
+    internal fun saveToCache(word: String, stressed: String) {
         try {
             val values = android.content.ContentValues().apply {
                 put("word", word)
@@ -250,6 +256,23 @@ object StressAccentuator {
                 SQLiteDatabase.CONFLICT_REPLACE
             )
         } catch (_: Exception) { }
+    }
+
+    fun buildStressedString(word: String, vowelIndex: Int): String {
+        val vowels = "аеёиоуыэюя"
+        val lower = word.lowercase()
+        var currentVowelIdx = 0
+        val result = StringBuilder()
+        for (ch in lower) {
+            result.append(ch)
+            if (ch in vowels) {
+                if (currentVowelIdx == vowelIndex) {
+                    result.append(ACUTE)
+                }
+                currentVowelIdx++
+            }
+        }
+        return result.toString()
     }
 
     fun getStressedSync(word: String): String? = runBlocking { getStressed(word) }
