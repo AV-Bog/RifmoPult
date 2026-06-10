@@ -1,3 +1,5 @@
+@file:Suppress("NULLABILITY_MISMATCH_BASED_ON_JAVA_ANNOTATIONS")
+
 package com.example.rifmopult
 
 /*
@@ -100,7 +102,7 @@ object StressAccentuator {
         }
     }
 
-    private suspend fun fetchFromMorpher(word: String, retryCount: Int = 0): String? =
+    private suspend fun fetchFromMorpher(word: String): String? =
         withContext(Dispatchers.IO) {
             var connection: HttpURLConnection? = null
             try {
@@ -199,9 +201,9 @@ object StressAccentuator {
 
         for (i in originalLower.indices) {
             val origChar = original[i]
-            var stressedChar = stressedLower[i]
+            val stressedChar = stressedLower[i]
 
-            if (i < stressedLower.length && stressedLower[i] == ACUTE) {
+            if (stressedLower[i] == ACUTE) {
                 stressPos = result.length
                 continue
             }
@@ -234,7 +236,7 @@ object StressAccentuator {
             cursor?.use {
                 if (it.moveToFirst()) it.getString(0) else null
             }
-        } catch (e: Exception) { null }
+        } catch (_: Exception) { null }
     }
 
     private fun saveToCache(word: String, stressed: String) {
@@ -247,7 +249,7 @@ object StressAccentuator {
                 "stress_cache", null, values,
                 SQLiteDatabase.CONFLICT_REPLACE
             )
-        } catch (e: Exception) { }
+        } catch (_: Exception) { }
     }
 
     fun getStressedSync(word: String): String? = runBlocking { getStressed(word) }
