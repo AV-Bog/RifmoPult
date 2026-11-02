@@ -30,16 +30,12 @@ jobs:
           java-version: "17"
           cache: gradle
 
-      - name: Настройка Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Права на gradlew
+        run: chmod +x gradlew
 
       - name: Установка нужных пакетов SDK
         run: |
           sdkmanager --install "platforms;android-36" "build-tools;35.0.0" "platform-tools"
-          sdkmanager --licenses > /dev/null || true
-
-      - name: Права на gradlew
-        run: chmod +x gradlew
 
       - name: Модульные тесты
         run: ./gradlew --no-daemon --stacktrace testDebugUnitTest
