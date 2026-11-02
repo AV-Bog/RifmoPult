@@ -23,6 +23,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Настройка Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          ls "$ANDROID_HOME" 2>/dev/null
+          ls "$ANDROID_HOME/platforms" 2>/dev/null
+          ls "$ANDROID_HOME/build-tools" 2>/dev/null
+
       - name: Настройка JDK 17
         uses: actions/setup-java@v4
         with:
@@ -32,10 +40,6 @@ jobs:
 
       - name: Права на gradlew
         run: chmod +x gradlew
-
-      - name: Установка нужных пакетов SDK
-        run: |
-          sdkmanager --install "platforms;android-36" "build-tools;35.0.0" "platform-tools"
 
       - name: Модульные тесты
         run: ./gradlew --no-daemon --stacktrace testDebugUnitTest
